@@ -93,6 +93,13 @@ class Wind:
         self.tau_slow = float(tau_slow)
         self.seed = seed
 
+        if semantics not in {"from", "towards"}:
+            raise ValueError("semantics must be 'from' or 'towards'")
+
+        self.rng = np.random.default_rng(seed)
+        self.slow_speed = 0.0
+        self.alpha_deg, self.C6 = load_wind_coefficients()
+
     def step(
         self,
         t: float,
@@ -100,8 +107,51 @@ class Wind:
         eta: np.ndarray,
         nu: np.ndarray,
     ) -> Tuple[np.ndarray, Dict[str, float]]:
-        # TODO: Replace this placeholder with your wind load model.
-        # Default: no wind loads.
-        tau_w6 = np.zeros(6)
-        info = {"U": 0.0, "beta_ned": 0.0, "alpha_body": 0.0}
+        if dt < 0.0:
+            raise ValueError("dt must be non-negative")
+
+        # The slow component is an OU process with stationary standard
+        # deviation sigma_slow.
+        if self.sigma_slow > 0.0 and dt > 0.0:
+            decay = np.exp(-dt / self.tau_slow)
+            noise_std = self.sigma_slow * np.sqrt(1.0 - decay**2)
+            self.slow_speed = (decay * self.slow_speed
+                               + noise_std * self.rng.normal())
+
+        # Finds the wind in ned when it goes towards beta
+        ambient_speed = max(0.0, self.mean_speed + self.slow_speed)
+        beta_towards = self.beta + (np.pi if self.semantics == "from" else 0.0)
+        wind_ned = ambient_speed * np.array([
+            np.cos(beta_towards), np.sin(beta_towards)
+        ])
+
+        # Wind in body frame
+        psi = float(eta[5])
+        c_psi = np.cos(psi)
+        s_psi = np.sin(psi)
+        wind_body = np.array([
+            c_psi * wind_ned[0] + s_psi * wind_ned[1],
+            -s_psi * wind_ned[0] + c_psi * wind_ned[1],
+        ])
+
+        # Relative speed in body and the relaative wind angle
+        relative_wind_x = wind_body[0] - nu[0]
+        relative_wind_y = wind_body[1] - nu[1]
+        relative_speed = np.sqrt(relative_wind_x**2 + relative_wind_y**2)
+        alpha_body = float(np.arctan2(relative_wind_y, relative_wind_x))
+        alpha_deg = np.degrees(alpha_body) % 360.0
+
+        # Does a linear interpolation to find the correct wind coefficients
+        coefficients = np.array([
+            np.interp(alpha_deg, self.alpha_deg, coefficient_values)
+            for coefficient_values in self.C6.T
+        ])
+
+        # Calculating the output
+        tau_w6 = relative_speed**2 * coefficients
+        info = {
+            "U": ambient_speed,
+            "beta_ned": float(beta_towards % (2.0 * np.pi)),
+            "alpha_body": alpha_body,
+        }
         return tau_w6, info
