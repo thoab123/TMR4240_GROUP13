@@ -21,7 +21,7 @@
 
 # Students may implement, for example:
 #    - pseudo-inverse allocation,
-#    - weighted least-squares allocation,
+#    - weighted least-squares allocation (CHOSEN METHOD),
 #    - optimization-based allocation,
 #    - power-minimizing allocation.
 # """
@@ -93,6 +93,38 @@ def allocate(
     alpha1 = np.arctan2(Fy1, Fx1)
     alpha2 = np.arctan2(Fy2, Fx2)
 
+    if alpha_now is not None:
+
+       # Azimuth 1
+       d1 = np.arctan2(
+           np.sin(alpha1 - alpha_now[1]),
+           np.cos(alpha1 - alpha_now[1])
+       )
+
+       d2 = np.arctan2(
+           np.sin(alpha1 + np.pi - alpha_now[1]),
+           np.cos(alpha1 + np.pi - alpha_now[1])
+       )
+
+       if abs(d2) < abs(d1):
+           u1 *= -1
+           alpha1 += np.pi
+
+       # Azimuth 2
+       d1 = np.arctan2(
+           np.sin(alpha2 - alpha_now[2]),
+           np.cos(alpha2 - alpha_now[2])
+       )
+
+       d2 = np.arctan2(
+           np.sin(alpha2 + np.pi - alpha_now[2]),
+           np.cos(alpha2 - alpha_now[2])
+       )
+
+       if abs(d2) < abs(d1):
+           u2 *= -1
+           alpha2 += np.pi
+    
     # Tunnel direction fixed at +90 deg
     alpha_t = np.pi / 2
 
