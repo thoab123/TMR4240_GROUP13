@@ -26,7 +26,9 @@ import numpy as np
 
 
 class Current:
-    """Template for student current model.
+    """Student current model: constant speed, direction optionally
+    ramping linearly from `beta` to `beta_end` over `duration` seconds
+    (used for Simulation 2), then holding steady at `beta_end`.
 
     Constructor contract — the automated checks (``python check.py``,
     ``pytest``, ``notebooks/part_1_demo.ipynb``) construct your model with
@@ -49,7 +51,8 @@ class Current:
     def __init__(self, speed: float = 0.0, beta: float = 0.0, *,
                  semantics: str = "towards",
                  beta_end: float | None = None, duration: float = 0.0):
-        # TODO: Store and use the parameters above in step().
+        # Store the constructor arguments as-is; step() below is where
+        # they actually get turned into a current vector at each call.
         self.speed = float(speed)
         self.beta = float(beta)
         self.semantics = semantics
@@ -63,6 +66,40 @@ class Current:
         eta: np.ndarray,
         nu: np.ndarray,
     ) -> np.ndarray:
-        # TODO: Replace this placeholder with your current model.
-        # Default: no current.
-        return np.zeros(6)
+        # --- 1. Direction at time t -----------------------------------
+        # Constant direction unless beta_end was given, in which case we
+        # linearly ramp from `beta` at t=0 to `beta_end` at t=duration,
+        # then hold at `beta_end` for all later times (Simulation 2:
+        # current rotates from "north" to "east" over 300 s).
+        if self.beta_end is None:
+            beta_t = self.beta
+        else:
+            # fraction goes from 0 -> 1 over [0, duration], then clamps
+            # at 1 so we don't keep rotating past beta_end.
+            fraction = min(t / self.duration, 1.0) if self.duration > 0 else 1.0
+            beta_t = self.beta + fraction * (self.beta_end - self.beta)
+
+        # --- 2. Resolve to the "towards" convention --------------------
+        # nu_c_ned must describe the direction the water FLOWS TOWARDS.
+        # If the user instead specified where it comes FROM (e.g. "0.5
+        # m/s from east"), flip by 180 degrees to get the actual flow
+        # direction. (Report Task 5: state this convention explicitly.)
+        if self.semantics == "towards":
+            beta_towards = beta_t
+        elif self.semantics == "from":
+            beta_towards = beta_t + np.pi
+        else:
+            raise ValueError(f"Unknown semantics: {self.semantics!r}")
+
+        # --- 3. NED components ------------------------------------------
+        # Standard compass-style decomposition: beta measured clockwise
+        # from North (0 = North, pi/2 = East), so North component uses
+        # cos and East component uses sin.
+        V_N = self.speed * np.cos(beta_towards)
+        V_E = self.speed * np.sin(beta_towards)
+
+        # --- 4. Pack into the 6-DOF interface ----------------------------
+        # V_D (vertical current) and the three rotational slots are
+        # always zero: we only model a horizontal translational current,
+        # never a vertical component or a "current moment".
+        return np.array([V_N, V_E, 0.0, 0.0, 0.0, 0.0])
