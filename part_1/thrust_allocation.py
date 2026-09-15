@@ -40,12 +40,12 @@ class ThrustAllocator:
 
 def allocate(
     self,
-    t: float,
-    dt: float,
-    tau_d: np.ndarray,
-    u_now: Optional[np.ndarray] = None,
-    alpha_now: Optional[np.ndarray] = None,
-) -> Tuple[np.ndarray, np.ndarray]:
+    t,
+    dt,
+    tau_d,
+    u_now = None,
+    alpha_now = None,
+)
 
     # Desired 3-DOF wrench
     tau = np.array([
