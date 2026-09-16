@@ -38,114 +38,114 @@ class ThrustAllocator:
     def __init__(self, thrusters: List[ThrusterConfig]):
         self.thrusters = thrusters
 
-def allocate(
-    self,
-    t,
-    dt,
-    tau_d,
-    u_now = None,
-    alpha_now = None,
-)
+    def allocate(
+        self,
+        t: float,
+        dt: float,
+        tau_d: np.ndarray,
+        u_now: Optional[np.ndarray] = None,
+        alpha_now: Optional[np.ndarray] = None,
+    ) -> Tuple[np.ndarray, np.ndarray]:
 
-    # Desired 3-DOF wrench
-    tau = np.array([
-        tau_d[0],  # surge force
-        tau_d[1],  # sway force
-        tau_d[5],  # yaw moment
-    ])
+        # Desired 3-DOF wrench
+        tau = np.array([
+            tau_d[0],  # surge force
+            tau_d[1],  # sway force
+            tau_d[5],  # yaw moment
+        ])
 
-    # Extended configuration matrix
-    B_e = np.array([
-        [0,  1,   0,  1,   0],
-        [1,  0,   1,  0,   1],
-        [12, -3, -13, 3, -13],
-    ], dtype=float)
+        # Extended configuration matrix
+        B_e = np.array([
+            [0,  1,   0,  1,   0],
+            [1,  0,   1,  0,   1],
+            [12, -3, -13, 3, -13],
+        ], dtype=float)
 
-    # Weight matrix
-    # Larger tunnel weight -> prefer stern azimuths
-    W = np.diag([
-        10.0,  # tunnel
-        1.0,
-        1.0,
-        1.0,
-        1.0,
-    ])
+        # Weight matrix
+        # Larger tunnel weight -> prefer stern azimuths
+        W = np.diag([
+            10.0,  # tunnel
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+        ])
 
-    W_inv = np.linalg.inv(W)
+        W_inv = np.linalg.inv(W)
 
-    H = B_e @ W_inv @ B_e.T
+        H = B_e @ W_inv @ B_e.T
 
-    z = W_inv @ B_e.T @ np.linalg.solve(H, tau)
+        z = W_inv @ B_e.T @ np.linalg.solve(H, tau)
 
-    # Extract solution
-    u_t = z[0]
+        # Extract solution
+        u_t = z[0]
 
-    Fx1 = z[1]
-    Fy1 = z[2]
+        Fx1 = z[1]
+        Fy1 = z[2]
 
-    Fx2 = z[3]
-    Fy2 = z[4]
+        Fx2 = z[3]
+        Fy2 = z[4]
 
-    # Convert Cartesian forces -> magnitude + azimuth
-    u1 = np.hypot(Fx1, Fy1)
-    u2 = np.hypot(Fx2, Fy2)
+        # Convert Cartesian forces -> magnitude + azimuth
+        u1 = np.hypot(Fx1, Fy1)
+        u2 = np.hypot(Fx2, Fy2)
 
-    alpha1 = np.arctan2(Fy1, Fx1)
-    alpha2 = np.arctan2(Fy2, Fx2)
+        alpha1 = np.arctan2(Fy1, Fx1)
+        alpha2 = np.arctan2(Fy2, Fx2)
 
-    if alpha_now is not None:
+        if alpha_now is not None:
 
-       # Azimuth 1
-       d1 = np.arctan2(
-           np.sin(alpha1 - alpha_now[1]),
-           np.cos(alpha1 - alpha_now[1])
-       )
+            # Azimuth 1
+            d1 = np.arctan2(
+                np.sin(alpha1 - alpha_now[1]),
+                np.cos(alpha1 - alpha_now[1])
+            )
 
-       d2 = np.arctan2(
-           np.sin(alpha1 + np.pi - alpha_now[1]),
-           np.cos(alpha1 + np.pi - alpha_now[1])
-       )
+            d2 = np.arctan2(
+                np.sin(alpha1 + np.pi - alpha_now[1]),
+                np.cos(alpha1 + np.pi - alpha_now[1])
+            )
 
-       if abs(d2) < abs(d1):
-           u1 *= -1
-           alpha1 += np.pi
+            if abs(d2) < abs(d1):
+                u1 *= -1
+                alpha1 += np.pi
 
-       # Azimuth 2
-       d1 = np.arctan2(
-           np.sin(alpha2 - alpha_now[2]),
-           np.cos(alpha2 - alpha_now[2])
-       )
+            # Azimuth 2
+            d1 = np.arctan2(
+                np.sin(alpha2 - alpha_now[2]),
+                np.cos(alpha2 - alpha_now[2])
+            )
 
-       d2 = np.arctan2(
-           np.sin(alpha2 + np.pi - alpha_now[2]),
-           np.cos(alpha2 - alpha_now[2])
-       )
+            d2 = np.arctan2(
+                np.sin(alpha2 + np.pi - alpha_now[2]),
+                np.cos(alpha2 + np.pi - alpha_now[2])
+            )
 
-       if abs(d2) < abs(d1):
-           u2 *= -1
-           alpha2 += np.pi
-    
-    # Tunnel direction fixed at +90 deg
-    alpha_t = np.pi / 2
+            if abs(d2) < abs(d1):
+                u2 *= -1
+                alpha2 += np.pi
 
-    # Static limits from project
-    MAX_TUNNEL = 32e3   # [N]
-    MAX_AZI = 80e3      # [N]
+        # Tunnel direction fixed at +90 deg
+        alpha_t = np.pi / 2
 
-    u_t = np.clip(u_t, -MAX_TUNNEL, MAX_TUNNEL)
-    u1 = np.clip(u1, 0, MAX_AZI)
-    u2 = np.clip(u2, 0, MAX_AZI)
+        # Static limits from project
+        MAX_TUNNEL = 32e3   # [N]
+        MAX_AZI = 80e3      # [N]
 
-    u_cmd = np.array([
-        u_t,
-        u1,
-        u2,
-    ])
+        u_t = np.clip(u_t, -MAX_TUNNEL, MAX_TUNNEL)
+        u1 = np.clip(u1, -MAX_AZI, MAX_AZI)
+        u2 = np.clip(u2, -MAX_AZI, MAX_AZI)
 
-    alpha_cmd = np.array([
-        alpha_t,
-        alpha1,
-        alpha2,
-    ])
+        u_cmd = np.array([
+            u_t,
+            u1,
+            u2,
+        ])
 
-    return u_cmd, alpha_cmd
+        alpha_cmd = np.array([
+            alpha_t,
+            alpha1,
+            alpha2,
+        ])
+
+        return u_cmd, alpha_cmd
