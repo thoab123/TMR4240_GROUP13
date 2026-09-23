@@ -61,14 +61,16 @@ class ThrustAllocator:
             [12, -3, -13, 3, -13],
         ], dtype=float)
 
-        # Weight matrix
-        # Larger tunnel weight -> prefer stern azimuths
+        # Weight matrix 
+        # Larger tunnel weight -> prefer stern azimuths 
         W = np.diag([
-            10.0,  # tunnel
-            1.0,
-            1.0,
-            1.0,
-            1.0,
+            1.0,  # penalty weight for using the bow tunnel thruster # tunnel: old value: 10.0  
+
+            1.0,  # penalty weight for the X (surge) force component of Azimuth thruster 1
+            1.0,  # penalty weight for the Y (sway) force component of Azimuth thruster 1
+
+            1.0,  # penalty weight for the X (surge) force component of Azimuth thruster 2
+            1.0,  # penalty weight for the Y (sway) force component of Azimuth thruster 2
         ])
 
         W_inv = np.linalg.inv(W)
