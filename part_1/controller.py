@@ -58,86 +58,81 @@ class DPController:
     """
 
     def __init__(self, *args, **kwargs):
+        self.int_n = np.zeros(3)
+        self.last_tau_3 = np.zeros(3)
+        self.last_e_n = np.zeros(3)
 
-            # PID initialization (Pole Placement)
-            # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
-            # Main diagonal elements from the mass matrix M3
-            m_u = 6.007e5  # Surge mass
-            m_v = 7.067e5  # Sway mass
-            I_z = 5.456e7  # Yaw inertia
-            M = np.array([m_u, m_v, I_z])
+        # LQR initialization (9-State Augmented)
+        # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+        A_base = np.array([
+            [0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 1, 0],
+            [0, 0, 0, 0, 0, 1],
+            [0, 0, 0, -1.86e-3, 0, 0],
+            [0, 0, 0, 0, -0.03176, -0.0241],
+            [0, 0, 0, 0, -3.325e-4, -0.035989]
+        ])
+        
+        B_base = np.array([
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+            [1.665e-6, 0, 0],
+            [0, 1.425e-6, 1.236e-8],
+            [0, 1.492e-8, 1.846e-8]
+        ])
 
-            # Define desired physical response characteristics
-            w_n = np.array([0.1, 0.1, 0.2])         # w_n: natural frequency [rad/s] (determines speed of response)
-            zeta = np.array([1.0, 1.0, 1.0])        # zeta: damping ratio (1.0 = critically damped, no overshoot)
-            T_i = np.array([100.0, 100.0, 100.0])   # T_i: integral time constant [s]
+        # Augment to 9x9 (Adding int_e)
+        A_aug = np.zeros((9, 9))
+        A_aug[0:6, 0:6] = A_base
+        A_aug[6:9, 0:3] = np.eye(3)  # int_e_dot = e_b
 
-            # Calculate gains based on second-order system dynamics
-            self.Kp = M * (w_n**2)
-            self.Kd = 2.0 * M * zeta * w_n
-            self.Ki = self.Kp / T_i
-            
-            # integrator initialization
-            self.int_e = np.zeros(3)
-            #****************************************************************************
+        B_aug = np.zeros((9, 3))
+        B_aug[0:6, :] = B_base
 
-            # LQR initialization
-            # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-            A = np.array([
-                [0, 0, 0, 1, 0, 0],
-                [0, 0, 0, 0, 1, 0],
-                [0, 0, 0, 0, 0, 1],
-                [0, 0, 0, -1.86e-3, 0, 0],
-                [0, 0, 0, 0, -0.03176, -0.0241],
-                [0, 0, 0, 0, -3.325e-4, -0.035989]
-            ])
-            
-            B = np.array([
-                [0, 0, 0],
-                [0, 0, 0],
-                [0, 0, 0],
-                [1.665e-6, 0, 0],
-                [0, 1.425e-6, 1.236e-8],
-                [0, 1.492e-8, 1.846e-8]
-            ])
+        # Q Matrix: 9 States
+        Q = np.diag([
+            1.0 / (10.0**2),    # Surge error (tolleranza rigida: 1 metro massimo)
+            1.0 / (10.0**2),    # Sway error (tolleranza rigida: 1 metro massimo)
+            1.0 / (0.1**2),     # Yaw error (tolleranza rigida: ~5.7 gradi)
 
-            # Q Matrix: State limits (Pos: 20m, Heading: 0.1 rad, Vel: 2 m/s)
-            Q = np.diag([
-                1.0 / (20.0**2),   # Surge error
-                1.0 / (20.0**2),   # Sway error
-                1.0 / (0.1**2),    # Yaw error
-                1.0 / (2.0**2),    # Surge velocity
-                1.0 / (2.0**2),    # Sway velocity
-                1.0 / (2.0**2)     # Yaw velocity
-            ])
+            1.0 / (0.2**2),     # Surge velocity (forte freno dinamico)
+            1.0 / (0.2**2),     # Sway velocity (forte freno dinamico)
+            1.0 / (0.1**2),    # Yaw velocity (forte freno dinamico)
 
-            # R Matrix: Thruster limits
-            tunnleThruster = 32000.0 # [N]
-            backThruster = 2*80000.0 # [N]
+            1.0 / (100.0**2),   # Integral Surge error 
+            1.0 / (100.0**2),   # Integral Sway error
+            1.0 / (1**2)        # Integral Yaw error
+        ])
+                    
+        tunnleThruster = 32000.0
+        backThruster   = 80000.0
 
-            max_tau_x = backThruster
-            max_tau_y = backThruster + tunnleThruster
-            max_tau_n = tunnleThruster * 12 +  backThruster * 13
+        max_tau_x = 1.5 * backThruster
+        max_tau_y = backThruster + tunnleThruster
+        max_tau_n = tunnleThruster * 12 + backThruster * 13
 
-            R = np.diag([
-                1.0 / (max_tau_x**2),
-                1.0 / (max_tau_y**2),
-                1.0 / (max_tau_n**2)
-            ])
+        R = np.diag([
+            1.0 / (max_tau_x**2),
+            1.0 / (max_tau_y**2),
+            1.0 / (max_tau_n**2)
+        ])
 
-            # Normalize to improve numerical stability in the ARE solver
-            scale_factor = max_tau_x**2
-            Q_scaled = Q * scale_factor
-            R_scaled = R * scale_factor
+        scale_factor = max_tau_x**2
+        Q_scaled = Q * scale_factor
+        R_scaled = R * scale_factor
 
-            # Compute LQR gain
-            P = scipy.linalg.solve_continuous_are(A, B, Q_scaled, R_scaled)
-            self.K_lqr = np.linalg.inv(R_scaled) @ B.T @ P
-            #****************************************************************************
+        # Compute 3x9 LQR gain
+        P = scipy.linalg.solve_continuous_are(A_aug, B_aug, Q_scaled, R_scaled)
+        self.K_lqr = np.linalg.inv(R_scaled) @ B_aug.T @ P
+
+        #****************************************************************************
 
     def reset(self) -> None:
         """Resetta gli stati interni prima di ogni run."""
-        self.int_e = np.zeros(3)
+        self.int_n = np.zeros(3)
+        self.last_tau_3 = np.zeros(3)
+        self.last_e_n = np.zeros(3)
 
     def compute(
         self,
@@ -148,7 +143,7 @@ class DPController:
         eta_ref: np.ndarray,
         nu_ref: np.ndarray | None = None,
         acc_ref: np.ndarray | None = None,
-    ) -> np.ndarray:
+        ) -> np.ndarray:
         
         # extracting variables [surge, sway, yaw]
         psi         = eta[5]
@@ -169,28 +164,34 @@ class DPController:
         nu_ref_3 = np.array([nu_ref[0], nu_ref[1], nu_ref[5]])
         nu_ref_b = R_yaw.T @ nu_ref_3
 
+        acc_ref_3 = np.array([acc_ref[0], acc_ref[1], acc_ref[5]])
+        acc_ref_b = R_yaw.T @ acc_ref_3 
+
         # computing velocity error
         e_nu_b = nu_3 - nu_ref_b
-        
-        # PID
+
+        # LQR + feedforward (9-State)
         # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-        # updating integral
-        self.int_e += e_b * dt
+        # 1. Update unbounded integral in the GLOBAL (NED) frame
+        self.int_n += e_n * dt
+        self.last_e_n = e_n.copy()
+
+        # 2. Rotate the accumulated global integral into the current BODY frame
+        int_b = R_yaw.T @ self.int_n
+
+        # 3. Compute feedforward force
+        M = np.array([6.007e5, 7.067e5, 5.456e7])
+        tau_ff = M * acc_ref_b 
         
-        # computing tau = - Kp*e - Kd*e_dot - Ki*int(e)
-        tau_3 = - (self.Kp * e_b) - (self.Kd * e_nu_b) - (self.Ki * self.int_e)
+        # 4. Assemble 9-DOF error vector using the rotated integral (int_b)
+        x_err = np.concatenate([e_b, e_nu_b, int_b])
+        
+        # 5. Final control law
+        tau_3 = -self.K_lqr @ x_err + tau_ff
+
+        # 6. Save for anti-windup back-calculation
+        self.last_tau_3 = tau_3
         #****************************************************************************
-
-        # # LQR
-        # # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
-        # # state vector x = [e_b, e_nu_b]^T
-        # x_err = np.concatenate([e_b, e_nu_b])
-        
-        # tau_3 = - self.K_lqr @ x_err
-
-        # # Uncomment the line below to use the LQR output instead of the PID output
-        # # tau_3 = tau_3_lqr
-        # #****************************************************************************
 
         # assembling output (6 GdL)
         tau_d = np.zeros(6)
@@ -199,6 +200,19 @@ class DPController:
         tau_d[5] = tau_3[2]  # Mz
 
         return tau_d
+
+    def apply_external_aw(self, tau_applied: np.ndarray, psi: float, dt: float) -> None:
+        """
+        Anti-windup via Clamping (Conditional Integration). 
+        Congela l'integratore se i propulsori fisici saturano per evitare falsi accumuli.
+        """
+        tau_app_3 = np.array([tau_applied[0], tau_applied[1], tau_applied[5]])
+        tau_error = tau_app_3 - self.last_tau_3
+        
+        # Se i propulsori fisici non riescono a seguire la richiesta (saturazione > 100 N)
+        if np.max(np.abs(tau_error)) > 100.0:
+            # Clamping: annulla l'incremento integrale avvenuto in questo esatto step
+            self.int_n -= self.last_e_n * dt
 
 def _yaw_matrix(psi: float) -> np.ndarray:
     """
