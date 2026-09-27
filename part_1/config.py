@@ -55,19 +55,24 @@ class RefAxisConfig:
     defaults here (overriding them only in ``run_case_part1.py`` will not
     reach the checks).
     """
-    # TODO (students): wn below is a placeholder, NOT a tuned value. Choose
-    # the natural frequency yourself and justify it in the report (see the
-    # project text, Reference Model section).
+    # Tuned values (Group 13), justified in the report (Reference Model
+    # section) and reproducible with reference_tuning_study.py.
     wn: float = 0.05 # natural frequency [rad/s]
-                    # Tr = 1/wn = 2.5 s — chosen so the
-                    # reference reacts quickly but stays
-                    # well clear of demanding accelerations
-                    # the thrusters can't deliver (see
-                    # Table 1 limits). Verified against
-                    # check_reference()'s smooth-start
-                    # criterion with comfortable margin.
-    zeta: float = 1.0                   # damping ratio [-] (critical — already correct)
-    rate_limit: Optional[float] = None  # max |x_dot|; None = off
+                    # Tr = 1/wn = 20 s. Tuned iteratively on
+                    # Simulations 3 and 4: 0.03 did not settle
+                    # within the 300 s four-corner hold, >= 0.08
+                    # saturated all thrusters. With order = 3,
+                    # 0.05 keeps every thruster below its limit,
+                    # also with 0.5 m/s current or 15 m/s wind.
+                    # Same wn for position and heading: a faster
+                    # heading reference loads the tunnel
+                    # thruster, which is also needed for sway.
+    zeta: float = 1.0                   # damping ratio [-] (critical: fastest response without overshoot)
+    rate_limit: Optional[float] = None  # max |x_dot|; None = off (peak speed < 1 m/s, not needed)
+    order: int = 3                      # filter order: 3 = smooth acceleration (default),
+                                        # 2 = project Eq. (2), kept for comparison. With
+                                        # order 2 the acceleration reference jumps at every
+                                        # setpoint step and saturated the tunnel thruster.
 
 
 def default_thrusters_gunnerus3() -> list[ThrusterConfig]:
