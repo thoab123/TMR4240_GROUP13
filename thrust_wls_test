@@ -1,0 +1,162 @@
+import numpy as np
+
+from thrust_allocation_final import ThrustAllocator
+
+# -- Extended configuration matrix --
+
+# Tunnel thruster: (x, y) = (12, 0) m
+# Azimuth 1:       (x, y) = (-13, 3) m
+# Azimuth 2:       (x, y) = (-13, -3) m
+
+B_e = np.array([
+    [0,  1,   0,  1,   0],
+    [1,  0,   1,  0,   1],
+    [12, -3, -13, 3, -13]
+], dtype=float)
+
+# -- Verify rank of configuration matrix --
+
+rank_B = np.linalg.matrix_rank(B_e)
+
+print("THRUSTER CONFIGURATION MATRIX")
+print(B_e)
+
+print(f"\nRank(B_e) = {rank_B}")
+
+assert rank_B == 3, (
+    "FAIL: Configuration matrix does not "
+    "have full row rank."
+)
+
+print("PASS: Full row rank verified.")
+
+# -- Initialize the actual thrust allocator --
+
+allocator = ThrustAllocator(thrusters=[])
+
+# -- Define test cases --
+
+# Desired forces: [Fx, Fy, Mz]
+# Units: [N, N, Nm]
+
+test_cases = {
+    "Pure surge": np.array([10000, 0, 0]),
+    "Pure sway":  np.array([0, 10000, 0]),
+    "Pure yaw":   np.array([0, 0, 100000]),
+    "Combined":   np.array([10000, 5000, 20000])
+}
+
+# -- Reconstruct achieved generalized force --
+
+def calculate_achieved_force(u_cmd, alpha_cmd):
+
+    # Thruster positions relative to CG
+
+    x = np.array([12.0, -13.0, -13.0])
+    y = np.array([0.0, 3.0, -3.0])
+
+    # Configuration matrix for actual angles
+
+    B = np.vstack([
+        np.cos(alpha_cmd),
+        np.sin(alpha_cmd),
+        x * np.sin(alpha_cmd)
+        - y * np.cos(alpha_cmd)
+    ])
+
+    # Resulting generalized force
+
+    return B @ u_cmd
+
+# -- Run allocation tests --
+
+for test_name, tau_3dof in test_cases.items():
+
+    print("\n" + "=" * 50)
+    print(test_name.upper())
+    print("=" * 50)
+
+    # Convert 3-DOF wrench to 6-DOF interface
+
+    tau_d = np.zeros(6)
+
+    tau_d[[0, 1, 5]] = tau_3dof
+
+    # Initial thruster angles
+
+    alpha_now = np.array([
+        np.pi / 2,
+        0.0,
+        0.0
+    ])
+
+    # Run your actual allocator
+
+    u_cmd, alpha_cmd = allocator.allocate(
+        t=0.0,
+        dt=0.1,
+        tau_d=tau_d,
+        u_now=np.zeros(3),
+        alpha_now=alpha_now
+    )
+
+    # Calculate achieved generalized force
+
+    tau_achieved = calculate_achieved_force(
+        u_cmd,
+        alpha_cmd
+    )
+
+    # Allocation error
+
+    error = tau_3dof - tau_achieved
+
+    # Display results
+
+    print("\nDesired force [N, N, Nm]:")
+    print(tau_3dof)
+
+    print("\nAchieved force [N, N, Nm]:")
+    print(np.round(tau_achieved, 6))
+
+    print("\nAllocation error [N, N, Nm]:")
+    print(np.round(error, 6))
+
+    print("\nThruster commands [kN]:")
+    print(np.round(u_cmd / 1000, 4))
+
+    print("\nAzimuth angles [deg]:")
+    print(np.round(np.rad2deg(alpha_cmd), 4))
+
+    # Verify thrust limits
+
+    thrust_limits = np.array([
+        32000.0,
+        80000.0,
+        80000.0
+    ])
+
+    limits_ok = np.all(
+        np.abs(u_cmd) <= thrust_limits + 1e-6
+    )
+
+    # Verify allocation accuracy
+
+    allocation_ok = np.allclose(
+        tau_achieved,
+        tau_3dof,
+        rtol=0,
+        atol=1e-6
+    )
+
+    print("\nVALIDATION RESULTS")
+
+    print(
+        "Thrust limits:",
+        "PASS" if limits_ok else "FAIL"
+    )
+
+    print(
+        "Allocation accuracy:",
+        "PASS" if allocation_ok else "FAIL"
+    )
