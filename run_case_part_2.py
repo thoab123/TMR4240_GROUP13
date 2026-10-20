@@ -59,6 +59,7 @@ DT = 0.1
 CURRENT_SPEED, CURRENT_FROM = 0.2, np.deg2rad(90.0)       # 0.2 m/s from east
 WIND_SPEED, WIND_FROM = 10.0, np.deg2rad(0.0)             # 10 m/s from north
 WAVES_HS, WAVES_TP, WAVES_FROM = 1.5, 8.0, np.deg2rad(45.0)   # design sea, from north-east
+WAVES_N = 100                                             # wave frequency components (range 0.25-3 wp, default), see plot_wave_model.py
 ROBUST_HS, ROBUST_TP = 2.5, 10.0                          # Simulation 6 (heavy sea for a vessel of this size, Lpp 34 m)
 CAP_WIND, CAP_CURRENT, CAP_HS, CAP_TP = 12.0, 0.2, 1.5, 8.0   # Simulation 5
 CAP_POS_LIMIT, CAP_PSI_LIMIT_DEG = 5.0, 5.0               # DP watch circles (max LF excursion)
@@ -109,7 +110,7 @@ def environment(*, current=True, wind=True, waves=True, gust=True,
     wnd = (Wind(WIND_SPEED, WIND_FROM, semantics="from", sigma_slow=0.5, gust=gust,
                 sigma_dir=np.deg2rad(2.0), dir_limit=np.deg2rad(5.0), seed=seed)
            if wind else Wind())
-    wav = Waves(hs=hs, tp=tp, direction=WAVES_FROM, seed=seed) if waves else None
+    wav = Waves(hs=hs, tp=tp, direction=WAVES_FROM, n_components=WAVES_N, seed=seed) if waves else None
     return cur, wnd, wav
 
 
@@ -301,7 +302,7 @@ def sim5(step_deg: float = 10.0):
         env = (Current(CAP_CURRENT, direction, semantics="from"),
                Wind(CAP_WIND, direction, semantics="from", sigma_slow=0.5, gust=True,
                     sigma_dir=np.deg2rad(2.0), seed=SEED),
-               Waves(hs=CAP_HS, tp=CAP_TP, direction=direction, seed=SEED))
+               Waves(hs=CAP_HS, tp=CAP_TP, direction=direction, n_components=WAVES_N, seed=SEED))
         return run(cfg, np.zeros(6), env)
 
     result = capability_sweep(run_direction, thrusters, step_deg=step_deg,
