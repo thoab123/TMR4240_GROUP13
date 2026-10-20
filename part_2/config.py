@@ -32,12 +32,26 @@ class RefAxisConfig:
     defaults here (overriding them only in ``run_case_part_2.py`` will not
     reach the checks).
     """
-    # TODO (students): none of the three values below is a tuned value — they
-    # are placeholders. Choose the natural frequency, the damping ratio and
-    # the rate limit yourself, and justify each of them in the report.
-    wn: float = 1.0                     # natural frequency [rad/s] (placeholder)
-    zeta: float = 1.0                   # damping ratio [-] (placeholder)
-    rate_limit: Optional[float] = None  # max |x_dot| (m/s or rad/s); None = off
+    # Tuned values (Group 13) carried over from part_1/config.py, justified in
+    # the report (Reference Model section) and reproducible with
+    # reference_tuning_study.py. Part 1 simulation numbers below refer to the
+    # Part 1 four-corner tests.
+    wn: float = 0.05 # natural frequency [rad/s]
+                    # Tr = 1/wn = 20 s. Tuned iteratively on Part 1,
+                    # Simulations 3 and 4: 0.03 did not settle
+                    # within the 300 s four-corner hold, >= 0.08
+                    # saturated all thrusters. With order = 3,
+                    # 0.05 keeps every thruster below its limit,
+                    # also with 0.5 m/s current or 15 m/s wind.
+                    # Same wn for position and heading: a faster
+                    # heading reference loads the tunnel
+                    # thruster, which is also needed for sway.
+    zeta: float = 1.0                   # damping ratio [-] (critical: fastest response without overshoot)
+    rate_limit: Optional[float] = None  # max |x_dot|; None = off (peak speed < 1 m/s, not needed)
+    order: int = 3                      # filter order: 3 = smooth acceleration (default),
+                                        # 2 = project Eq. (2), kept for comparison. With
+                                        # order 2 the acceleration reference jumps at every
+                                        # setpoint step and saturated the tunnel thruster.
 
 
 @dataclass
