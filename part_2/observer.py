@@ -86,7 +86,7 @@ class KalmanFilterObserver(Observer):
     def __init__(self, *args, **kwargs):
         self.n_states = 15
         self.x = np.zeros(self.n_states)
-        self.P = np.eye(self.n_states) * 1.0 # Initial covariance, need to tune
+        self.P = np.eye(self.n_states) * 1 # Initial covariance, need to tune
 
         # Tuning parameters (starting guesses)
         self.w0 = 2 * np.pi / 8.0   # dominant wave frequency [rad/s], Tp = 8 s design sea
@@ -95,8 +95,22 @@ class KalmanFilterObserver(Observer):
         self.Tb = 1000.0            # bias time constant [s]
 
         # Noise covariances (starting guesses, need tuning); Q is a continuous-time intensity
-        self.Q = np.diag([1e-6] * 3 + [1e-2] * 3 + [1e-6] * 3 + [1e-4] * 3 + [1e2] * 3)
-        self.R = np.diag([0.1**2, 0.1**2, np.deg2rad(0.5)**2])
+        self.Q = np.diag([
+            1.0, 1.0, np.deg2rad(1.0)**2,
+            10.0**2, 10.0**2, 100.0**2,
+        ])
+        self.R = np.diag([0.20**2, 0.20**2, np.deg2rad(0.20)**2])
+        wave_variance = self.K_w**2 * np.diag(self.Q)[:3] / (
+            4.0 * self.lam * self.w0
+        )
+        self.P0 = np.diag(np.concatenate([
+            wave_variance / self.w0**2,
+            wave_variance,
+            np.array([5.0, 5.0, np.deg2rad(10.0)])**2,
+            np.array([0.02, 0.02, np.deg2rad(0.05)])**2,
+            np.diag(self.Q)[3:6] * self.Tb / 2.0,
+        ]))
+        self.P = self.P0.copy()
 
         # Writing the M and D matrices, maybe it should be somewhere else? 
         # These are given in the assignment
@@ -120,7 +134,7 @@ class KalmanFilterObserver(Observer):
             self.x[6] = eta0[0]  # N
             self.x[7] = eta0[1]  # E
             self.x[8] = eta0[5]  # psi
-        self.P = np.eye(self.n_states) * 0.1
+        self.P = self.P0.copy()
 
     def wave_matrices(self):
         # Calculate the wave model, have 3 DOF and 6 states
@@ -166,7 +180,7 @@ class KalmanFilterObserver(Observer):
         F[9:12, 8] = self.Minv @ (dJ.T @ b)              # (d/dpsi)*nu_dot = ...
         F[9:12, 9:12] = -self.Minv @ self.D              # (d/dnu)*nu_dot = ...
         F[9:12, 12:15] = self.Minv @ J.T                 # (d/db)*nu_dot = ...
-        F[12:15, 12:15] = -np.eye(3) / self.Tb           # (d/db)*b_dot
+        F[12:15, 12:15] = -np.eye(3) / self.Tb           # (d/db)*b_dot = ...
         return F
 
     def h(self):
@@ -183,9 +197,14 @@ class KalmanFilterObserver(Observer):
         tau_3dof = np.array([tau_est[0], tau_est[1], tau_est[5]])
 
         # Prediction (Euler)
-        F = np.eye(self.n_states) + dt * self.F(self.x, tau_3dof) # Linearized f by taylor
+        Phi = np.eye(self.n_states) + dt * self.F(self.x, tau_3dof) # Linearized f by taylor
         x_pred = self.x + dt * self.f(self.x, tau_3dof)
-        P_pred = F @ self.P @ F.T + self.Q * dt
+        _, Ew, _ = self.wave_matrices()
+        G = np.zeros((self.n_states, 6))
+        G[0:6, 0:3] = Ew
+        G[12:15, 3:6] = np.eye(3)
+        Q_k = G @ self.Q @ G.T * dt
+        P_pred = Phi @ self.P @ Phi.T + Q_k
 
         # Predicted measurement
         H = self.h()
@@ -201,9 +220,9 @@ class KalmanFilterObserver(Observer):
         self.x = x_pred + K @ innovation
         self.x[8] = np.arctan2(np.sin(self.x[8]), np.cos(self.x[8]))
         IKH = np.eye(self.n_states) - K @ H
-        self.P = IKH @ P_pred @ IKH.T + K @ self.R @ K.T   # Joseph form
+        self.P = IKH @ P_pred @ IKH.T + K @ self.R @ K.T   # Joseph form, safer 
 
-        # Assemble 6-DOF outputs
+        # Assemble 6-DOF outputs, we assume that the vel and bias for 3,4,5 is negligible 
         eta_hat = np.asarray(eta_measured, dtype=float).reshape(6).copy()
         eta_hat[0], eta_hat[1], eta_hat[5] = self.x[6], self.x[7], self.x[8]
         nu_hat = np.zeros(6)
@@ -224,4 +243,3 @@ def select_observer(kind: str, **kwargs) -> Observer:
         return choices[kind](**kwargs)
     except KeyError as exc:
         raise ValueError(f"observer_type must be one of {tuple(choices)}") from exc
-
