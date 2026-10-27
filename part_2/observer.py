@@ -97,7 +97,7 @@ class KalmanFilterObserver(Observer):
         # Noise covariances (starting guesses, need tuning); Q is a continuous-time intensity
         self.Q = np.diag([
             1.0, 1.0, np.deg2rad(1.0)**2,
-            10.0**2, 10.0**2, 100.0**2,
+            10*10.0**2, 10*10.0**2, 10*100.0**2,
         ])
         self.R = np.diag([0.20**2, 0.20**2, np.deg2rad(0.20)**2])
         wave_variance = self.K_w**2 * np.diag(self.Q)[:3] / (
@@ -108,7 +108,7 @@ class KalmanFilterObserver(Observer):
             wave_variance,
             np.array([5.0, 5.0, np.deg2rad(10.0)])**2,
             np.array([0.02, 0.02, np.deg2rad(0.05)])**2,
-            np.diag(self.Q)[3:6] * self.Tb / 2.0,
+            np.array([50000.0, 50000.0, 5000000.0]),
         ]))
         self.P = self.P0.copy()
 
