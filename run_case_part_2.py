@@ -242,7 +242,7 @@ def sim4():
     for kind in ("nonlinear_passive", "kalman"):
         for label, env_kw in variants:
             cfg = Part2SimConfig(dt=DT, T=600.0, use_reference=False, use_observer=True,
-                                 observer_type=kind)
+                                 observer_type=kind) # , bypass_actuators=True)
             logs = run(cfg, np.zeros(6), environment(**env_kw), controller=fixed)
             plot_observer(logs).suptitle(f"Observer {kind}, {label}")
             plot_observer_error(logs).suptitle(f"Observer {kind}, {label} — estimation errors")
@@ -251,7 +251,7 @@ def sim4():
     # ON the truth), then watch the error decay.  Quote the convergence time.
     for kind in ("nonlinear_passive", "kalman"):
         cfg = Part2SimConfig(dt=DT, T=300.0, use_reference=False, use_observer=True,
-                             observer_type=kind)
+                             observer_type=kind) # , bypass_actuators=True)
         sim = make_sim(cfg, fixed)
         sim.reset_state()
         sim.observer.reset(OBSERVER_OFFSET)
