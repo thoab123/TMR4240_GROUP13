@@ -25,7 +25,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 
-IDX = [0, 1, 5]  # surge, sway, yaw  (module level, above the class)
 
 @dataclass
 class ObserverEstimate:
@@ -63,82 +62,78 @@ class NonlinearPassiveObserver(Observer):
 
     def __init__(
         self,
-        m: tuple[float, ...] = (5.0e5, 7.5e5, 1.0e6, 1.0e7, 1.0e8, 6.0e7),
-        d: tuple[float, ...] = (5.0e4, 1.0e5, 2.0e5, 5.0e6, 1.0e7, 1.0e7),
         w0: float = 0.8,
         wc: float = 1.1,
         zeta: float = 0.1,
-        k3: float = 5.0e4,
-        k4: float = 5.0e5,
+        k4: float = 5.0e5,      # TODO: tune value (0.5 * wc * self.M)
         T_b: float = 100.0,
         **kwargs,
     ):
-        # Interface passes 6-DOF vectors; keep only surge, sway, yaw
-        self.M = np.diag(np.asarray(m, dtype=float)[IDX])
+        self.M = np.array([
+            [6.007e5,  0.0,      0.0    ],
+            [0.0,      7.067e5, -4.733e5],
+            [0.0,     -5.712e5,  5.456e7],
+        ])
         self.Minv = np.linalg.inv(self.M)
-        self.D = np.diag(np.asarray(d, dtype=float)[IDX])
+        self.D = np.array([
+            [1.118e3, 0.0,     0.0    ],
+            [0.0,     2.229e4, 0.0    ],
+            [0.0,     0.0,     1.950e6],
+        ])
 
-        # Assign parameters BEFORE they are used below
         self.w0, self.wc, self.zeta = w0, wc, zeta
         self.T_b = T_b
         self.k1_upper = -2.0 * (1.0 - zeta) * (wc / w0)
         self.k1_lower = 2.0 * w0 * (1.0 - zeta)
         self.k2 = wc
+        self.k4 = k4            # TODO: tune value
+        self.k3 = 0.05 * k4     # TODO: tune value
+        self.gamma = 0.99       # TODO: tune value
 
-        self.K4 = k4 * np.diag(np.diag(self.M) / self.M[0, 0])
-        self.K3 = 0.05 * self.K4
-        self.gamma = 0.99
+        I3 = np.eye(3)
+        Z3 = np.zeros((3, 3))
+        Om = self.w0 * I3
+        Lam = self.zeta * I3
 
-        I3, Z3 = np.eye(3), np.zeros((3, 3))
-        Om, Lam = self.w0 * I3, self.zeta * I3
         self.A_w = np.block([[Z3, I3], [-Om @ Om, -2.0 * Lam @ Om]])  # 6x6
         self.C_w = np.hstack([Z3, I3])                                # 3x6
-
-        self.reset()   # must come last
+        self.reset()
 
     def reset(self, eta0: np.ndarray | None = None):
-        self.xi = np.zeros(6)
-        self.eta = np.zeros(3)
-        self.nu = np.zeros(3)
-        self.b = np.zeros(3)
-        if eta0 is not None:
-            self.eta = np.asarray(eta0, dtype=float).reshape(6)[IDX].copy()
+        self.xi  = np.zeros(6)    # wave state: 2 x 3 DOF
+        self.eta = np.zeros(3) if eta0 is None else np.asarray(eta0, dtype=float).reshape(3).copy()
+        self.nu  = np.zeros(3)
+        self.b   = np.zeros(3)
         self._init = eta0 is not None
 
     def step(self, t: float, dt: float, eta_measured: np.ndarray, tau_est: np.ndarray) -> ObserverEstimate:
-        y6 = np.asarray(eta_measured, dtype=float).reshape(6)
-        tau = np.asarray(tau_est, dtype=float).reshape(6)[IDX]
+        y = np.asarray(eta_measured, dtype=float).reshape(3)   # [x, y, psi]
+        tau = np.asarray(tau_est, dtype=float).reshape(3)      # [X, Y, N]
         if not self._init:
-            self.reset(y6)
+            self.reset(y)
 
-        y = y6[IDX]  # [N, E, psi]
-
-        # 1. Estimation error (wrap yaw)
+        # 1. Estimation error (wrap yaw only)
         y_tilde = y - (self.eta + self.C_w @ self.xi)
         y_tilde[2] = (y_tilde[2] + np.pi) % (2 * np.pi) - np.pi
 
-        # 2. Yaw rotation matrix
+        # 2. Yaw rotation matrix (exact for 3-DOF)
         c, s = np.cos(y[2]), np.sin(y[2])
-        J = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+        J = np.array([[c, -s, 0.0], [s,  c, 0.0], [0.0, 0.0, 1.0]])
 
         # 3. Forward Euler step
         d_xi  = self.A_w @ self.xi + np.concatenate([self.k1_upper * y_tilde, self.k1_lower * y_tilde])
         d_eta = J @ self.nu + self.k2 * y_tilde
-        d_b   = -self.b / self.T_b + self.K3 @ y_tilde / self.gamma
-        d_nu  = self.Minv @ (-self.D @ self.nu + J.T @ self.b + tau + J.T @ (self.K4 @ y_tilde) / self.gamma)
+        d_b   = -self.b / self.T_b + (self.k3 / self.gamma) * y_tilde
+        d_nu  = self.Minv @ (-self.D @ self.nu + J.T @ self.b + tau + (self.k4 / self.gamma) * (J.T @ y_tilde))
 
         self.xi  += dt * d_xi
         self.eta += dt * d_eta
         self.b   += dt * d_b
         self.nu  += dt * d_nu
+
         self.eta[2] = (self.eta[2] + np.pi) % (2 * np.pi) - np.pi
 
-        # 4. Embed back into 6-vectors for the simulator
-        eta6 = y6.copy()                 # heave/roll/pitch: pass measurement through
-        eta6[IDX] = self.eta
-        nu6 = np.zeros(6);   nu6[IDX] = self.nu
-        b6 = np.zeros(6);    b6[IDX] = self.b
-        return ObserverEstimate(eta6, nu6, b6)
+        return ObserverEstimate(self.eta.copy(), self.nu.copy(), self.b.copy())
 
 class KalmanFilterObserver(Observer):
     """Template for a discrete KF/EKF observer.
