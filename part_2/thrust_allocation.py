@@ -1,7 +1,52 @@
+""" Thrust Allocation template
+
+Students should implement an algorithm that maps the desired body-frame
+wrench to individual thruster commands. The simulator calls, once per step:
+
+    allocator.allocate(t, dt, tau_d, u_now, alpha_now) -> (u_cmd, alpha_cmd)
+
+Inputs (full actuator state — use what your algorithm needs):
+    t         : current simulation time [s]
+    dt        : time step [s]              (rate-aware/dynamic allocation)
+    tau_d     : (6,) desired BODY wrench [Fx, Fy, Fz, Mx, My, Mz]
+                (the 3-DOF wrench to allocate is tau_d[[0, 1, 5]]
+                 = [Fx, Fy, Mz]; the other components are zero)
+    u_now     : current actual thrusts [N]     (rate-aware allocation)
+    alpha_now : current thruster angles [rad]  (minimize azimuth slewing)
+
+Outputs:
+    u_cmd     : signed thrust command for each thruster [N]
+    alpha_cmd : thruster angle command for each thruster [rad]
+
+Students may implement, for example:
+    - pseudo-inverse allocation,
+    - weighted least-squares allocation,
+    - optimization-based allocation,
+    - power-minimizing allocation.
+
+Contract with the checks, exactly as the public checks test it: ``allocate()``
+must never command more thrust than a thruster can deliver, so for an
+infeasible demand (the check uses 400 kN of sway) every |u_cmd| <= u_max.
+*How* you handle an infeasible demand beyond that limit is your design
+decision, not a checked criterion — state your rule and justify it in the
+report.  The check also calls ``allocate()`` repeatedly from the initial
+actuator state, applies each command through IDEAL actuators and feeds the
+resulting actuator state back as ``u_now``/``alpha_now``; after 30 s of such
+calls the achieved wrench must equal the requested one.  A steady-state
+allocator therefore passes on its first call; a rate-aware allocator
+(optional extension, and optional in the project text too) passes once it has
+converged.  In the simulation the transient (thrust ramps, 2 rpm azimuth
+slews) is shaped by the actuator model in ``models/thruster_dynamics.py``
+whatever you command, so rate limiting your own commands is optional, not
+required.  ``u_now``/``alpha_now`` are passed in because a thruster produces
+the same force as (u, alpha) or as (-u, alpha + pi): which of the two you
+command, and on what basis, is part of your allocation design. """
+
 from typing import List, Optional, Tuple
 import numpy as np
 
 from models.thruster_dynamics import ThrusterConfig
+from scipy.optimize import minimize
 
 
 # Part 2: Constrained Weighted Least Squares (WLS) allocation.
@@ -43,27 +88,27 @@ class ThrustAllocator:
         ## -- SECTION 2: ORIGINAL WLS SOLUTION -- ##
         
         # Define the inverse diagonal weights:
-        w_inv = 1.0 / self.W
+        w_inv = 1.0 / np.diag(self.W)
         
         # H represents B_e * W^-1 * B_e^T:
         H = (self.B_e * w_inv) @ self.B_e.T
         
         # Define the five allocated thrust components:
         z = w_inv * (
-            self.B_e @ np.linalg.solve(H, tau)   # "np.linalg.solve" solves the linear system without needing to calculate the inverse of H
+            self.B_e.T @ np.linalg.solve(H, tau)   # "np.linalg.solve" solves the linear system without needing to calculate the inverse of H
             )
         
         return z
 
-    def _max_limit_restriction(self, z, tol = 1e-5):
+    def _max_limit_restriction(self, z, tol=1e-5):
         
         ## -- SECTION 3: CHECK MAXIMUM THRUST LIMITS -- ##
         
         # Check whether the allocation method is physically compatible and achievable:
         return (
             abs(z[0]) <= self.u_max[0] + tol
-            and np.hypot(z[1], z[2] <= self.u_max[1] + tol)   # "np.hypot" estimates the magnitude of the combined surge and sway forces
-            and np.hypot(z[3], z[4] <= self.u_max[2] + tol)
+            and np.hypot(z[1], z[2]) <= self.u_max[1] + tol
+            and np.hypot(z[3], z[4]) <= self.u_max[2] + tol
         )
     
     def _new_constrained_wls(self, tau):
@@ -74,7 +119,7 @@ class ThrustAllocator:
         z_0 = self._original_wls(tau)
         
         # Checks if the original WLS method is feasible regarding the limits. If it is, keep it:
-        if self._check_max_limit_restriction(z_0):
+        if self._max_limit_restriction(z_0):
             return z_0
         
         # Numerical scaling - yaw divided by 10: (in [kN])
@@ -92,11 +137,11 @@ class ThrustAllocator:
         
         # Define objective function:
         def objective(v):
-            return 0.5 * np.dot(self.W * v, v)
+            return 0.5 * v @ self.W @ v
         
         # Define gradient of objective function:
         def gradient(v):
-            return self.W * v
+            return self.W @ v
         
         # Equality constraint, along with inequality constraint for error checking:
         constraints = [
@@ -133,7 +178,7 @@ class ThrustAllocator:
         # Check whether optimization method results are correct or not:
         if (
             not result.success
-            or not self._check_max_limit_restriction(z, 0.1)
+            or not self._max_limit_restriction(z, 0.1)
             or np.linalg.norm(
                 A @ result.x - target,
                 ord = np.inf
@@ -182,7 +227,7 @@ class ThrustAllocator:
             
             # Binary search to find the scaling factor (bisection method):
             for _ in range(28):
-                middle = low + (high) / 2.0
+                middle = (low + high) / 2.0
                 
                 # Check scaled wrench:
                 check_wrench = self._new_constrained_wls(middle * tau)
@@ -260,4 +305,3 @@ class ThrustAllocator:
         
         # Return the thrust and azimuth commands:
         return u_cmd, alpha_cmd
-
