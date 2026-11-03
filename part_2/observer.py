@@ -163,6 +163,7 @@ class KalmanFilterObserver(Observer):
         self.n_states = 15
         self.x = np.zeros(self.n_states)
         self.P = np.eye(self.n_states) * 1 # Initial covariance, need to tune
+        self.last_nis: float | None = None
 
         # Tuning parameters (starting guesses)
         self.w0 = 2 * np.pi / 8.0   # dominant wave frequency [rad/s], Tp = 8 s design sea
@@ -205,6 +206,7 @@ class KalmanFilterObserver(Observer):
     #reset the kalman filter when done
     def reset(self, eta0: np.ndarray | None = None):
         self.x = np.zeros(self.n_states)
+        self.last_nis = None
         if eta0 is not None:
             # Initialize LF pose part of state vector (indices for eta: 6 to 8)
             self.x[6] = eta0[0]  # N
@@ -292,6 +294,7 @@ class KalmanFilterObserver(Observer):
 
         # Correction
         S = H @ P_pred @ H.T + self.R
+        self.last_nis = float(innovation @ np.linalg.solve(S, innovation))
         K = np.linalg.solve(S, H @ P_pred).T            # P H^T S^-1
         self.x = x_pred + K @ innovation
         self.x[8] = np.arctan2(np.sin(self.x[8]), np.cos(self.x[8]))

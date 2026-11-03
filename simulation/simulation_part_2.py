@@ -62,6 +62,8 @@ class Part2Logs:
     tau_D: np.ndarray
     nu_ref: np.ndarray
     acc_ref: np.ndarray
+    nis: np.ndarray | None = None
+    sensor_noise_enabled: bool = False
 
 
 class DPSimulatorPart2:
@@ -141,6 +143,11 @@ class DPSimulatorPart2:
         six = lambda: np.zeros((n, 6))
         eta_h, nu_h, eta_mh, nu_mh = six(), six(), six(), six()
         eta_eh, nu_eh, bias_h = six(), six(), six()
+        nis = (
+            np.empty(n)
+            if cfg.use_observer and hasattr(self.observer, "last_nis")
+            else None
+        )
         sp_h, cmd_h, tau_dh, tau_th, tau_total = six(), six(), six(), six(), six()
         tau_wh, tau_waveh = six(), six()
         tau_P, tau_I, tau_D = six(), six(), six()
@@ -172,6 +179,11 @@ class DPSimulatorPart2:
                     estimate = ObserverEstimate(*estimate)
                 eta_ctrl, nu_ctrl = estimate.eta, estimate.nu
                 bias_h[k] = estimate.bias
+                if nis is not None:
+                    value = self.observer.last_nis
+                    if value is None or not np.isfinite(value) or value < 0:
+                        raise ValueError("observer must provide a finite nonnegative NIS after step()")
+                    nis[k] = value
             else:
                 eta_ctrl, nu_ctrl = eta_m, nu_m
             eta_eh[k], nu_eh[k] = eta_ctrl, nu_ctrl
@@ -246,4 +258,5 @@ class DPSimulatorPart2:
             beta_w, Uw_mean, Uw_gust, self.thruster_names,
             self.observer.name if cfg.use_observer else "off",
             I_ned, I_psi, tau_P, tau_I, tau_D, nu_ref_h, acc_ref_h,
+            nis=nis, sensor_noise_enabled=cfg.use_sensor_noise,
         )
