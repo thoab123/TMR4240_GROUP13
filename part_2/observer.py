@@ -189,7 +189,7 @@ class KalmanFilterObserver(Observer):
         ]))
         self.P = self.P0.copy()
 
-        # Writing the M and D matrices, maybe it should be somewhere else? 
+        # Writing the M and D matrices
         # These are given in the assignment
         self.M = np.array([
             [6.007e5, 0.0, 0.0],
@@ -203,7 +203,7 @@ class KalmanFilterObserver(Observer):
             [0.0, 0.0, 1.950e6]
         ])
 
-    #reset the kalman filter when done
+    # Reset the kalman filter state and covariance
     def reset(self, eta0: np.ndarray | None = None):
         self.x = np.zeros(self.n_states)
         self.last_nis = None
