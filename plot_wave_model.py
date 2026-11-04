@@ -16,7 +16,14 @@ script only configures it and produces the evidence asked for in Section 4.3:
 4. optionally, a convergence study of the load statistics vs number of
    components N (several seeds).
 
-Output: figures/fig_wave_*.pdf/.png and figures/wave_convergence_table.csv
+The sea state, number of components and seed are imported from
+run_case_part_2.py, so the figures and numbers describe exactly the waves used
+in the Part 2 simulations.
+
+Output (figures/ next to this script):
+    fig_wave_spectrum, fig_wave_loads, fig_wave_direction (.pdf/.png)
+    wave_verification.csv          all numbers quoted in the report
+    wave_convergence_table.csv     Table A1 (with --convergence)
 """
 import argparse
 import csv
@@ -29,17 +36,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from mcsimpy.waves.wave_spectra import ModifiedPiersonMoskowitz
 from models.waves import Waves
+from run_case_part_2 import SEED as RUNNER_SEED
+from run_case_part_2 import WAVES_FROM, WAVES_HS, WAVES_N, WAVES_TP
 
-OUT_DIR = Path("figures")
+OUT_DIR = Path(__file__).resolve().parent / "figures"
 
 DT = 0.1
 T_END = 600.0
 
-HS = 1.5                       # design sea of Part 2 [m]
-TP = 8.0                       # peak period [s]
-DIRECTION = 45.0               # waves FROM north-east [deg]
-N_COMPONENTS = 100             # number of frequency components
-SEED = 123                     # same seed as run_case_part_2.py
+# Design sea and settings taken from run_case_part_2.py
+HS = WAVES_HS                          # significant wave height [m]
+TP = WAVES_TP                          # peak period [s]
+DIRECTION = float(np.degrees(WAVES_FROM))  # waves FROM [deg]
+N_COMPONENTS = WAVES_N                 # number of frequency components
+SEED = RUNNER_SEED                     # random seed
 
 PSI_SHIP = 0.0                 # vessel heading used in the time series [deg]
 
@@ -215,6 +225,34 @@ def main(argv=None):
           f" / {tau_wf[:, 5].std() * 1e-3:.0f} kNm")
     print(f"drift mean Fx/Fy/Mz = {tau_sv[:, 0].mean() * 1e-3:.2f} / {tau_sv[:, 1].mean() * 1e-3:.2f} kN"
           f" / {tau_sv[:, 5].mean() * 1e-3:.2f} kNm")
+
+    # Largest angle between mean drift force and wave propagation in the sweep
+    dev = (drift_dir - towards_rel + 180.0) % 360.0 - 180.0
+    # Period after which the drift load would repeat without frequency jitter
+    repeat = 2.0 * np.pi / dw
+    print(f"max angle drift force vs propagation = {np.max(np.abs(dev)):.1f} deg")
+    print(f"repeat period without frequency jitter = {repeat:.0f} s")
+
+    # Saves every number quoted in the report
+    rows = [["quantity", "value", "unit", "note"],
+            ["Hs", args.hs, "m", ""], ["Tp", args.tp, "s", ""],
+            ["direction (from)", args.direction, "deg", ""],
+            ["vessel heading", args.psi, "deg", ""],
+            ["components N", args.n, "", ""], ["seed", args.seed, "", ""],
+            ["frequency range", f"{w_lo:.3f}-{w_hi:.3f}", "rad/s", "0.25-3 wp, random jitter"],
+            ["energy share in range", round(share * 100, 2), "%", ""],
+            ["repeat period without jitter", round(repeat), "s", "2 pi / d_omega"],
+            ["loads finite", finite, "", f"{args.t_end:g} s"],
+            ["WF std Fx", round(tau_wf[:, 0].std() * 1e-3, 1), "kN", f"seed {args.seed}, {args.t_end:g} s"],
+            ["WF std Fy", round(tau_wf[:, 1].std() * 1e-3, 1), "kN", ""],
+            ["WF std Mz", round(tau_wf[:, 5].std() * 1e-3, 0), "kNm", ""],
+            ["WF max |Fy|", round(np.abs(tau_wf[:, 1]).max() * 1e-3, 0), "kN", ""],
+            ["drift mean Fx", round(tau_sv[:, 0].mean() * 1e-3, 2), "kN", ""],
+            ["drift mean Fy", round(tau_sv[:, 1].mean() * 1e-3, 2), "kN", ""],
+            ["drift mean Mz", round(tau_sv[:, 5].mean() * 1e-3, 2), "kNm", ""],
+            ["max angle drift vs propagation", round(float(np.max(np.abs(dev))), 1), "deg", "direction sweep"]]
+    with open(OUT_DIR / "wave_verification.csv", "w", newline="") as f:
+        csv.writer(f).writerows(rows)
 
     # --- 4. Optional convergence study vs N ---
     if args.convergence:

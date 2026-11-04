@@ -1,0 +1,19 @@
+quantity,value,unit,note
+Hs,1.5,m,
+Tp,8.0,s,
+direction (from),45.0,deg,
+vessel heading,0.0,deg,
+components N,100,,
+seed,123,,
+frequency range,0.198-2.351,rad/s,"0.25-3 wp, random jitter"
+energy share in range,98.47,%,
+repeat period without jitter,289,s,2 pi / d_omega
+loads finite,True,,600 s
+WF std Fx,88.8,kN,"seed 123, 600 s"
+WF std Fy,147.8,kN,
+WF std Mz,1009.0,kNm,
+WF max |Fy|,442.0,kN,
+drift mean Fx,-1.61,kN,
+drift mean Fy,-3.38,kN,
+drift mean Mz,-8.45,kNm,
+max angle drift vs propagation,21.2,deg,direction sweep
