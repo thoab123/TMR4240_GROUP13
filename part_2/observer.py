@@ -84,9 +84,10 @@ class NonlinearPassiveObserver(Observer):
         self.k1_upper = -2.0 * (1.0 - zeta) * (wc / w0)
         self.k1_lower = 2.0 * w0 * (1.0 - zeta)
         self.k2 = wc
-        self.k4 = k4            # TODO: tune value
-        self.k3 = 0.05 * k4     # TODO: tune value
-        self.gamma = 0.99       # TODO: tune value
+
+        self.K4 = k4 * np.diag(np.diag(self.M) / self.M[0, 0])
+        self.K3 = 0.05 * self.K4
+        self.gamma = 0.99
 
         I3, Z3 = np.eye(3), np.zeros((3, 3))
         Om, Lam = self.w0 * I3, self.zeta * I3
@@ -109,7 +110,7 @@ class NonlinearPassiveObserver(Observer):
         tau = np.asarray(tau_est, dtype=float).reshape(6)[IDX]
         if not self._init:
             self.reset(y6)
-        
+
         y = y6[IDX]  # [N, E, psi]
 
         # 1. Estimation error (wrap yaw)
@@ -123,9 +124,8 @@ class NonlinearPassiveObserver(Observer):
         # 3. Forward Euler step
         d_xi  = self.A_w @ self.xi + np.concatenate([self.k1_upper * y_tilde, self.k1_lower * y_tilde])
         d_eta = J @ self.nu + self.k2 * y_tilde
-        d_b   = -self.b / self.T_b + (self.k3 / self.gamma) * y_tilde
-        d_nu  = self.Minv @ (-self.D @ self.nu + J.T @ self.b + tau
-                             + J.T @ (self.k4 * y_tilde) / self.gamma)
+        d_b   = -self.b / self.T_b + self.K3 @ y_tilde / self.gamma
+        d_nu  = self.Minv @ (-self.D @ self.nu + J.T @ self.b + tau + J.T @ (self.K4 @ y_tilde) / self.gamma)
 
         self.xi  += dt * d_xi
         self.eta += dt * d_eta
