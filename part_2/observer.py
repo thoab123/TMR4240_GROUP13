@@ -165,11 +165,11 @@ class KalmanFilterObserver(Observer):
         self.P = np.eye(self.n_states) * 1 # Initial covariance, need to tune
         self.last_nis: float | None = None
 
-        # Tuning parameters (starting guesses)
-        self.w0 = 2 * np.pi / 8.0   # dominant wave frequency [rad/s], Tp = 8 s design sea
-        self.lam = 0.1              # wave relative damping ratio [-]
+        # Tuning parameters (matching NonlinearPassiveObserver values)
+        self.w0 = 0.8               # dominant wave frequency [rad/s] (from NPO)
+        self.lam = 0.1              # wave relative damping ratio [-] (from NPO: zeta = 0.1)
         self.K_w = 0.1              # wave noise gain (tune with Q)
-        self.Tb = 1000.0            # bias time constant [s]
+        self.Tb = 100.0             # bias time constant [s] (from NPO: T_b = 100.0)
 
         # Noise covariances (starting guesses, need tuning); Q is a continuous-time intensity
         self.Q = np.diag([
