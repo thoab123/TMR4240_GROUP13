@@ -154,12 +154,13 @@ class KalmanFilterObserver(Observer):
         self.n_states = 15
         self.x = np.zeros(self.n_states)
         self.P = np.eye(self.n_states) * 1 # Initial covariance, need to tune
+        self.last_nis: float | None = None
 
-        # Tuning parameters (starting guesses)
-        self.w0 = 2 * np.pi / 8.0   # dominant wave frequency [rad/s], Tp = 8 s design sea
-        self.lam = 0.1              # wave relative damping ratio [-]
+        # Tuning parameters (matching NonlinearPassiveObserver values)
+        self.w0 = 0.8               # dominant wave frequency [rad/s] (from NPO)
+        self.lam = 0.1              # wave relative damping ratio [-] (from NPO: zeta = 0.1)
         self.K_w = 0.1              # wave noise gain (tune with Q)
-        self.Tb = 1000.0            # bias time constant [s]
+        self.Tb = 100.0             # bias time constant [s] (from NPO: T_b = 100.0)
 
         # Noise covariances (starting guesses, need tuning); Q is a continuous-time intensity
         self.Q = np.diag([
@@ -179,7 +180,7 @@ class KalmanFilterObserver(Observer):
         ]))
         self.P = self.P0.copy()
 
-        # Writing the M and D matrices, maybe it should be somewhere else? 
+        # Writing the M and D matrices
         # These are given in the assignment
         self.M = np.array([
             [6.007e5, 0.0, 0.0],
@@ -193,9 +194,10 @@ class KalmanFilterObserver(Observer):
             [0.0, 0.0, 1.950e6]
         ])
 
-    #reset the kalman filter when done
+    # Reset the kalman filter state and covariance
     def reset(self, eta0: np.ndarray | None = None):
         self.x = np.zeros(self.n_states)
+        self.last_nis = None
         if eta0 is not None:
             # Initialize LF pose part of state vector (indices for eta: 6 to 8)
             self.x[6] = eta0[0]  # N
@@ -283,6 +285,7 @@ class KalmanFilterObserver(Observer):
 
         # Correction
         S = H @ P_pred @ H.T + self.R
+        self.last_nis = float(innovation @ np.linalg.solve(S, innovation))
         K = np.linalg.solve(S, H @ P_pred).T            # P H^T S^-1
         self.x = x_pred + K @ innovation
         self.x[8] = np.arctan2(np.sin(self.x[8]), np.cos(self.x[8]))

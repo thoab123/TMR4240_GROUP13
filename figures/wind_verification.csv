@@ -1,0 +1,34 @@
+quantity,value,unit,note
+mean wind speed,10.0,m/s,run_case_part_2.WIND_SPEED
+mean wind direction (from),0.0,deg,
+sigma_slow,0.5,m/s,
+tau_slow,120.0,s,
+sigma_dir,2.0,deg,
+tau_dir,300.0,s,
+direction bound,5.0,deg,
+gust spectrum,norsok,,z = 10.0 m
+gust harmonics N,200,,
+gust frequency range,0.002-0.5,Hz,log-spaced bins
+seed,123,,
+time step,0.1,s,
+coefficient table step,10.0,deg,
+coefficient table points,37,,
+C_X gap C(0)-C(360),0,,
+C_X leave-one-out interp. error,4.26,% of max|C|,
+C_Y gap C(0)-C(360),0,,
+C_Y leave-one-out interp. error,4.53,% of max|C|,
+C_N gap C(0)-C(360),0,,
+C_N leave-one-out interp. error,7.08,% of max|C|,
+max |tau| difference Part 1 vs Part 2,0,N or Nm,"1000 random cases, extensions off"
+realisation length,6.0,h,
+slow speed std (realised),0.524,m/s,target sigma_slow = 0.5
+"gust std, full NORSOK spectrum",1.017,m/s,
+"gust std, discretised (theory)",0.859,m/s,
+gust std (realised),0.861,m/s,
+gust mean (realised),0.0015,m/s,
+"band energy realised/target, 0.003-0.3 Hz",0.48-1.02,,"12 log bands, mean 0.90"
+"band energy realised/target, 0.005-0.3 Hz",0.84-1.02,,mean 0.94
+direction std (realised),1.83,deg,target sigma_dir = 2.0 deg (before clipping)
+max |direction excursion|,5.0,deg,
+time at direction bound,0.075,%,
+max |direction excursion| in first 300 s,4.207,deg,length of Simulation 1

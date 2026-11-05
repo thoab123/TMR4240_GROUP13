@@ -33,7 +33,7 @@ from part_2.config import Part2SimConfig, default_thrusters_part_2
 from part_2.controller import DPController
 from part_2.current import Current
 from part_2.observer import select_observer
-from simulation.plotter_part_2 import (plot_observer, plot_observer_error,
+from simulation.plotter_part_2 import (plot_nis, plot_observer, plot_observer_error,
                                        plot_thruster_setpoints, plot_waves,
                                        plot_wind_field, plot_wrench_residual)
 from part_2.reference import ReferenceModel
@@ -245,7 +245,9 @@ def sim4():
                                  observer_type=kind) # , bypass_actuators=True)
             logs = run(cfg, np.zeros(6), environment(**env_kw), controller=fixed)
             plot_observer(logs).suptitle(f"Observer {kind}, {label}")
-            plot_observer_error(logs).suptitle(f"Observer {kind}, {label} — estimation errors")
+            # Keep NIS plot only for Kalman with waves (diagnostic)
+            if kind == "kalman" and env_kw.get("waves", False):
+                plot_nis(logs).suptitle(f"Observer {kind}, {label} — NIS diagnostic")
             out[(kind, label)] = logs
     # Convergence: start the estimate away from the truth (the engine resets it
     # ON the truth), then watch the error decay.  Quote the convergence time.
@@ -258,8 +260,6 @@ def sim4():
         current, wind, waves = environment()
         logs = sim.run(np.zeros(6), current=current, wind=wind, waves=waves)
         plot_observer(logs).suptitle(f"Observer {kind}, offset start — convergence")
-        plot_observer_error(logs).suptitle(
-            f"Observer {kind}, offset start — estimation errors")
         out[(kind, "offset start")] = logs
     # Stage (c) is the only part that needs the choice you make from the
     # evidence above, so it is skipped until you have made it.  Stages (a) and
@@ -342,7 +342,9 @@ def bonus_sensor_noise():
                              observer_type=kind, use_sensor_noise=True)
         logs = run(cfg, np.zeros(6), environment(), controller=fixed)
         plot_observer(logs).suptitle(f"Bonus: observer {kind}, waves + sensor noise")
-        plot_observer_error(logs).suptitle(f"Bonus: observer {kind}, waves + sensor noise — estimation errors")
+        # Keep NIS plot only for Kalman (diagnostic)
+        if kind == "kalman":
+            plot_nis(logs).suptitle("Bonus: Kalman, waves + sensor noise — NIS diagnostic")
         out[kind] = logs
     for label, use_obs in (("raw noisy measurements", False),
                            (f"observer {selected_observer()}", True)):

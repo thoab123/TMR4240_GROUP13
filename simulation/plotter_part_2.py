@@ -88,6 +88,36 @@ def plot_observer_error(logs, figsize=(11, 7), window=30.0):
 
 
 
+def plot_nis(logs, figsize=(10, 4)):
+    """Plot pre-correction NIS with pointwise chi-square(3) reference limits.
+
+    The central 95% interval leaves 2.5% in each tail under the model.
+    The limits are not bounds on the sample mean or a stability test.
+    Their statistical interpretation assumes a consistent Gaussian model;
+    EKF linearisation and wave/model mismatch make them approximate here.
+    Sensor-noise-free runs do not have the assumed measurement statistics.
+    """
+    if logs.nis is None:
+        raise ValueError("NIS is unavailable: run a Kalman observer simulation first")
+    values = np.asarray(logs.nis, dtype=float)
+    if values.shape != np.asarray(logs.t).shape or not np.all(np.isfinite(values)):
+        raise ValueError("NIS must contain one finite value per simulation sample")
+    lower, upper = 0.2157952826, 9.3484036045
+    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
+    ax.plot(logs.t, values, lw=0.8, label="NIS")
+    ax.axhspan(lower, upper, alpha=0.15, color="green",
+               label="Central 95% interval\n(3 DOF): 0.216-9.348")
+    ax.axhline(3.0, color="black", ls="--", label="Model expectation: 3")
+    ax.set_xlabel("Time [s]")
+    ax.set_ylabel("NIS [-]")
+    noise = "sensor noise on" if logs.sensor_noise_enabled else "sensor noise off; R is assumed"
+    ax.set_title(f"EKF innovation diagnostic\n{noise}")
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.02, 1.0),
+              borderaxespad=0.0)
+    return fig
+
+
 def _wrap_pi(a):
     return (np.asarray(a) + np.pi) % (2.0 * np.pi) - np.pi
 
