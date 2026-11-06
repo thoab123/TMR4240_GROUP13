@@ -44,7 +44,26 @@ class DPController:
     DP controller using LQR and full kinematic feedforward.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, pos_tol: float = 10.0, psi_tol: float = 0.2,
+                 vel_tol: float = 0.5, r_tol: float = 0.2,
+                 int_pos_tol: float = 100.0, int_psi_tol: float = 1.0,
+                 force_scale: float = 0.5, **kwargs):
+        # Bryson tolerances (largest acceptable error per state), weight = 1/tol^2:
+        #   pos_tol [m], psi_tol [rad]       position and heading error
+        #   vel_tol [m/s], r_tol [rad/s]     surge/sway velocity and yaw-rate error
+        #   int_pos_tol [m s], int_psi_tol [rad s]  integral errors
+        #   force_scale [-]                  force tolerances in R = force_scale * max thrust
+        #                                    (0.5: corrections use about half the installed
+        #                                    thrust, leaving margin for the ramp-rate limits)
+        # The defaults are the group's tuned values. vel_tol raised from 0.2 to 0.5 m/s:
+        # with 0.2 the closed-loop poles sat at 0.8-1.0 rad/s, on the wave frequency, so the
+        # controller chased wave-frequency velocity and exceeded the thruster capacity.
+        # r_tol raised from 0.1 to 0.2 rad/s and force_scale 0.5 (was effectively 1.0):
+        # halves all gains, so raw feedback (Sim 3) no longer saturates the thrusters
+        # (see the pull request for the test results).
+        self.tolerances = dict(pos_tol=pos_tol, psi_tol=psi_tol, vel_tol=vel_tol, r_tol=r_tol,
+                               int_pos_tol=int_pos_tol, int_psi_tol=int_psi_tol,
+                               force_scale=force_scale)
         self.int_n = np.zeros(3)
         self.last_tau_3_b = np.zeros(3)
         self.last_e_n = np.zeros(3)
@@ -79,17 +98,17 @@ class DPController:
 
         # Q Matrix: 9 States
         Q = np.diag([
-            1.0 / (10.0**2),    
-            1.0 / (10.0**2),    
-            1.0 / (0.2**2),     
+            1.0 / (pos_tol**2),        # North position error
+            1.0 / (pos_tol**2),        # East position error
+            1.0 / (psi_tol**2),        # heading error
 
-            1.0 / (0.2**2),     
-            1.0 / (0.2**2),     
-            1.0 / (0.1**2),    
+            1.0 / (vel_tol**2),        # surge velocity error
+            1.0 / (vel_tol**2),        # sway velocity error
+            1.0 / (r_tol**2),          # yaw-rate error
 
-            1.0 / (100.0**2),   
-            1.0 / (100.0**2),   
-            1.0 / (1**2)        
+            1.0 / (int_pos_tol**2),    # integral of North error
+            1.0 / (int_pos_tol**2),    # integral of East error
+            1.0 / (int_psi_tol**2)     # integral of heading error
         ])
                     
         tunnelThruster = 32000.0
@@ -99,10 +118,11 @@ class DPController:
         max_tau_y = backThruster + tunnelThruster
         max_tau_n = tunnelThruster * 12 + backThruster * 13
 
+        # Force tolerances: a fraction force_scale of the maximum thrust per axis
         R = np.diag([
-            1.0 / (max_tau_x**2),
-            1.0 / (max_tau_y**2),
-            1.0 / (max_tau_n**2)
+            1.0 / ((force_scale * max_tau_x)**2),
+            1.0 / ((force_scale * max_tau_y)**2),
+            1.0 / ((force_scale * max_tau_n)**2)
         ])
 
         scale_factor = max_tau_x**2
