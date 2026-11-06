@@ -35,7 +35,7 @@ from part_2.current import Current
 from part_2.observer import select_observer
 from simulation.plotter_part_2 import (plot_nis, plot_observer, plot_observer_error,
                                        plot_thruster_setpoints, plot_waves,
-                                       plot_wind_field, plot_wrench_residual)
+                                       plot_wind_field, plot_wrench_residual, plot_wave_rejection)
 from part_2.reference import ReferenceModel
 from part_2.thrust_allocation import ThrustAllocator
 from models.waves import Waves
@@ -245,6 +245,9 @@ def sim4():
                                  observer_type=kind)
             logs = run(cfg, np.zeros(6), environment(**env_kw), controller=fixed)
             plot_observer(logs).suptitle(f"Observer {kind}, {label}")
+            # Add wave-rejection plot for "with waves" scenarios to show filtering capability
+            if env_kw.get("waves", False):
+                plot_wave_rejection(logs).suptitle(f"Observer {kind}, {label} — wave rejection")
             # Keep NIS plot only for Kalman with waves (diagnostic)
             if kind == "kalman" and env_kw.get("waves", False):
                 plot_nis(logs).suptitle(f"Observer {kind}, {label} — NIS diagnostic")
@@ -322,12 +325,21 @@ def sim6():
 
 
 def sim7():
-    """Part 2, Simulation 7 — your own showcase.  Design it, explain it, discuss it."""
-    # TODO (students): replace this with your own scenario.
-    cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=True, observer_type=selected_observer())
-    logs = run(cfg, np.zeros(6), environment())
-    standard_plots(logs, observer=True)
+    """Part 2, Simulation 7 — full system integration: four-corner DP test with 
+    complete observer, reference model, and environmental loads.
+    
+    This simulation demonstrates the complete DP system in action, contrasting
+    with Simulation 3 (raw measurements, no observer) to showcase the value of
+    the EKF observer in rejecting wave-frequency disturbances and maintaining
+    accurate position tracking in realistic marine conditions.
+    """
+    hold = 300.0
+    cfg = Part2SimConfig(dt=DT, T=5 * hold, use_observer=True, 
+                         observer_type=selected_observer(), thruster_dynamics=True)
+    logs = run(cfg, four_corner_commands(cfg, hold), environment())
+    standard_plots(logs, setpoints=True, environment_plots=True, observer=True)
     return logs
+
 
 
 def bonus_sensor_noise():
