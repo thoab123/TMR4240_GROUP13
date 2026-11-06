@@ -111,6 +111,22 @@ class ThrustAllocator:
             and np.hypot(z[3], z[4]) <= self.u_max[2] + tol
         )
     
+    def _feasible_scale_unconstrained(self, tau):
+        
+        ## -- SECTION 3b: ANALYTIC LOWER BOUND FOR THE SCALING FACTOR (speed-up) -- ##
+        
+        # The unconstrained WLS solution is linear in tau, so the largest factor s <= 1
+        # for which s * z_0 respects every thrust limit follows directly:
+        z_0 = self._original_wls(tau)
+        magnitudes = np.array([
+            abs(z_0[0]),
+            np.hypot(z_0[1], z_0[2]),
+            np.hypot(z_0[3], z_0[4])
+        ])
+        with np.errstate(divide = "ignore"):
+            factors = np.where(magnitudes > 0, self.u_max / magnitudes, np.inf)
+        return min(1.0, float(factors.min())), z_0
+
     def _new_constrained_wls(self, tau):
         
         ## -- SECTION 4: CONSTRAINED WLS METHOD; OPTIMIZED FOR PART 2 -- ##
@@ -152,11 +168,15 @@ class ThrustAllocator:
             },
             {
                 "type": "ineq",
-                "fun": lambda v: 80.0**2 - v[1]**2 - v[2]**2
+                "fun": lambda v: 80.0**2 - v[1]**2 - v[2]**2,
+                # Analytic Jacobian (speed-up: avoids numerical differencing at every iteration)
+                "jac": lambda v: np.array([0.0, -2.0 * v[1], -2.0 * v[2], 0.0, 0.0])
             },
             {
                 "type": "ineq",
-                "fun": lambda v: 80.0**2 - v[3]**2 - v[4]**2
+                "fun": lambda v: 80.0**2 - v[3]**2 - v[4]**2,
+                # Analytic Jacobian (speed-up)
+                "jac": lambda v: np.array([0.0, 0.0, 0.0, -2.0 * v[3], -2.0 * v[4]])
             }
         ]
         
@@ -168,8 +188,10 @@ class ThrustAllocator:
             constraints = constraints,
             method = "SLSQP",    # Sequential Least Squares Programming.
             options = {
-                "ftol": 1e-9,
-                "maxiter": 300
+                "ftol": 1e-6,     # was 1e-9; 1e-6 kN is far below what the thrusters can resolve
+                "maxiter": 30     # was 300; feasible solves need at most 21 iterations (measured,
+                                  # mean 2.8), so 30 keeps a margin while infeasible solves give
+                                  # up sooner (they were 92 % of the runtime)
             })
         
         # Convertion from [kN] to [N]:
@@ -221,12 +243,15 @@ class ThrustAllocator:
         
         if z is None:
             
-            # Scale the requested wrench correctly (using a scaling factor):
-            low, high = 0.0, 1.0
-            z = np.zeros(5)
+            # Scale the requested wrench correctly (using a scaling factor).
+            # Speed-up: start from the analytic lower bound instead of 0, so every factor
+            # below it needs no optimisation, and use 7 steps (precision < 1 %) instead of 28:
+            low, z_0 = self._feasible_scale_unconstrained(tau)
+            high = 1.0
+            z = low * z_0
             
             # Binary search to find the scaling factor (bisection method):
-            for _ in range(28):
+            for _ in range(7):
                 middle = (low + high) / 2.0
                 
                 # Check scaled wrench:
