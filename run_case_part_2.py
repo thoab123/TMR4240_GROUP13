@@ -66,13 +66,12 @@ CAP_POS_LIMIT, CAP_PSI_LIMIT_DEG = 5.0, 5.0               # DP watch circles (ma
 CAP_TOTAL_POS_LIMIT, CAP_TOTAL_PSI_LIMIT_DEG = 3.0, 3.0   # operability limits (max total motion)
 SEED = 123
 
-# TODO (students): the observer used by Part 2, Simulations 5-7 (and by the
-# raw-vs-observer comparison in Part 2, Simulation 4) is YOUR choice, made on
-# the evidence you produce in Part 2, Simulation 4.  Compare both observers
-# there first, then set this to "nonlinear_passive" or "kalman" and justify
-# the choice in the report.  It is None until you choose: every preset that
-# needs it stops with a message instead of picking one for you.
-SELECTED_OBSERVER = "nonlinear_passive"
+# Observer used by Part 2, Simulations 5-7 (and by the raw-vs-observer
+# comparison in Part 2, Simulation 4); options "nonlinear_passive" or "kalman".
+# The EKF ("kalman") is used: it adapts its gains through the covariance and
+# stays stable in the heavy-sea test (Simulation 6), where the nonlinear
+# passive observer with fixed gains ends in a limit cycle.
+SELECTED_OBSERVER = "kalman"
 
 # Initial observer error used by the convergence demonstration in Part 2,
 # Simulation 4.  The engine resets every observer at the TRUE initial pose, so

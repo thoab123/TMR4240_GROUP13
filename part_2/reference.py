@@ -9,7 +9,7 @@ the controller. The simulator calls, once per step:
 All generalized vectors are 6-DOF, ordered [surge, sway, heave, roll, pitch,
 yaw]. The 3-DOF model uses indices [0, 1, 5]; leave the rest zero.
 
-Design (Group 13):
+Design:
     Third-order low-pass filter per axis (N, E, psi) by default. The
     second-order filter of the project's Eq. (2) is kept as an option
     (RefAxisConfig.order = 2) so the comparison in the report can be
