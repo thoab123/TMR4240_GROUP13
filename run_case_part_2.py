@@ -127,6 +127,61 @@ def four_corner_commands(cfg: Part2SimConfig, hold: float):
     return eta_cmd
 
 
+def transit_commands(cfg: Part2SimConfig, hold: float, transit_time: float):
+    """Set-point sequence for a transit mission: hold, move north, hold, move east, hold.
+    
+    Args:
+        cfg: simulation config
+        hold: seconds to hold at each waypoint
+        transit_time: seconds for each transit leg
+    """
+    # Waypoint sequence: (x [m], y [m], heading [rad])
+    waypoints = [
+        (0.0, 0.0, 0.0),        # Start: origin, north heading
+        (0.0, 0.0, 0.0),        # Hold at origin
+        (0.0, 500.0, 0.0),      # After transit: 500m north, north heading
+        (0.0, 500.0, 0.0),      # Hold
+        (500.0, 500.0, np.pi/4), # After transit: 500m east, NE heading
+        (500.0, 500.0, np.pi/4), # Hold
+    ]
+    
+    n_steps = int(round(cfg.T / cfg.dt)) + 1
+    hold_steps = int(round(hold / cfg.dt))
+    transit_steps = int(round(transit_time / cfg.dt))
+    
+    eta_cmd = np.zeros((n_steps, 6))
+    
+    # Leg sequence: [start at 0, hold, transit to wp1, hold, transit to wp2, hold]
+    legs = [
+        (0, hold_steps, waypoints[0]),  # Hold at origin
+        (hold_steps, hold_steps + transit_steps, waypoints[1]),  # Ramp to wp1
+        (hold_steps + transit_steps, 2*hold_steps + transit_steps, waypoints[2]),  # Hold at wp1
+        (2*hold_steps + transit_steps, 2*hold_steps + 2*transit_steps, waypoints[3]),  # Ramp to wp2
+        (2*hold_steps + 2*transit_steps, 3*hold_steps + 2*transit_steps, waypoints[4]),  # Hold at wp2
+    ]
+    
+    for start, end, (x_dest, y_dest, psi) in legs:
+        end = min(end, n_steps)
+        if start >= end:
+            break
+        
+        # Linear interpolation for transit legs; hold for waypoint legs
+        if end - start == hold_steps:
+            # Waypoint hold: constant position and heading
+            eta_cmd[start:end, 0] = x_dest
+            eta_cmd[start:end, 1] = y_dest
+            eta_cmd[start:end, 5] = psi
+        else:
+            # Transit: ramp position linearly (heading constant during transit)
+            x_prev, y_prev, _ = waypoints[0] if start == 0 else waypoints[2]
+            frac = np.linspace(0, 1, end - start + 1)[:-1]
+            eta_cmd[start:end, 0] = x_prev + frac * (x_dest - x_prev)
+            eta_cmd[start:end, 1] = y_prev + frac * (y_dest - y_prev)
+            eta_cmd[start:end, 5] = psi
+    
+    return eta_cmd
+
+
 def make_sim(cfg: Part2SimConfig, controller=None):
     thrusters = default_thrusters_part_2()
     return DPSimulatorPart2(
@@ -339,6 +394,27 @@ def sim7():
     logs = run(cfg, four_corner_commands(cfg, hold), environment())
     standard_plots(logs, setpoints=True, environment_plots=True, observer=True)
     return logs
+
+
+def sim7b():
+    """Part 2, Simulation 7b — extended capability: transit mission with dynamic 
+    waypoint navigation in full sea state.
+    
+    This test demonstrates the system's ability to execute a realistic transit mission
+    (hold at origin, navigate north 500m, hold, navigate northeast 500m, hold) while
+    maintaining course over ground and managing environmental disturbances. This 
+    extends the static 4-corner test to show dynamic DP capability under realistic 
+    mission constraints.
+    """
+    hold = 300.0
+    transit_time = 200.0
+    total_time = 3 * hold + 2 * transit_time  # ~1700s
+    cfg = Part2SimConfig(dt=DT, T=total_time, use_observer=True, 
+                         observer_type=selected_observer(), thruster_dynamics=True)
+    logs = run(cfg, transit_commands(cfg, hold, transit_time), environment())
+    standard_plots(logs, setpoints=True, environment_plots=True, observer=True)
+    return logs
+
 
 
 

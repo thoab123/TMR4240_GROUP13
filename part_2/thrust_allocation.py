@@ -188,10 +188,8 @@ class ThrustAllocator:
             constraints = constraints,
             method = "SLSQP",    # Sequential Least Squares Programming.
             options = {
-                "ftol": 1e-6,     # was 1e-9; 1e-6 kN is far below what the thrusters can resolve
-                "maxiter": 30     # was 300; feasible solves need at most 21 iterations (measured,
-                                  # mean 2.8), so 30 keeps a margin while infeasible solves give
-                                  # up sooner (they were 92 % of the runtime)
+                "ftol": 1e-6,
+                "maxiter": 30
             })
         
         # Convertion from [kN] to [N]:
