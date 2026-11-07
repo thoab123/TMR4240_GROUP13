@@ -446,7 +446,7 @@ def bonus_sensor_noise():
 
 
 SCENARIOS = {"sim1": sim1, "sim2": sim2, "sim3": sim3, "sim4": sim4,
-             "sim5": sim5, "sim6": sim6, "sim7": sim7, "bonus": bonus_sensor_noise}
+             "sim5": sim5, "sim6": sim6, "sim7": sim7, "sim7b": sim7b, "bonus": bonus_sensor_noise}
 
 
 def main(argv=None):
