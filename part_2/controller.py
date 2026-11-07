@@ -55,12 +55,11 @@ class DPController:
         #   force_scale [-]                  force tolerances in R = force_scale * max thrust
         #                                    (0.5: corrections use about half the installed
         #                                    thrust, leaving margin for the ramp-rate limits)
-        # The defaults are the group's tuned values. vel_tol raised from 0.2 to 0.5 m/s:
-        # with 0.2 the closed-loop poles sat at 0.8-1.0 rad/s, on the wave frequency, so the
-        # controller chased wave-frequency velocity and exceeded the thruster capacity.
-        # r_tol raised from 0.1 to 0.2 rad/s and force_scale 0.5 (was effectively 1.0):
-        # halves all gains, so raw feedback (Sim 3) no longer saturates the thrusters
-        # (see the pull request for the test results).
+        # The defaults are the tuned values. vel_tol = 0.5 m/s keeps the
+        # closed-loop poles away from the wave frequency (about 0.8 rad/s), so the
+        # controller does not chase wave-frequency velocity. r_tol = 0.2 rad/s and
+        # force_scale = 0.5 keep the gains low enough that even raw feedback (Sim 3)
+        # stays within the thrust and ramp-rate limits.
         self.tolerances = dict(pos_tol=pos_tol, psi_tol=psi_tol, vel_tol=vel_tol, r_tol=r_tol,
                                int_pos_tol=int_pos_tol, int_psi_tol=int_psi_tol,
                                force_scale=force_scale)
