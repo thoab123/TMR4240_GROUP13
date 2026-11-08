@@ -27,7 +27,10 @@ Two parts:
 
 Output (figures/ next to this script):
     fig_reference_feedforward.pdf/.png   feedforward force and rate, 2nd vs 3rd order
+    fig_reference_step.pdf/.png          normalised step response, 2nd vs 3rd order
+    fig_reference_sim2_leg.pdf/.png      Simulation 2, first sway leg: reference vs vessel
     reference_verification.csv           part 1: all candidate numbers
+    reference_step.csv                   part 1: step-response peaks and settling times
     reference_sim2_metrics.csv           part 2: Simulation 2 numbers
 """
 import argparse
@@ -130,6 +133,60 @@ def reference_alone(thrusters):
     return results
 
 
+def step_response():
+    """Unit North step from rest for the 2nd- and 3rd-order filter at the tuned wn.
+
+    Returns {label: (t, pos, vel, acc)} and writes the peaks and settling times,
+    normalised with A = 1 m and T_r = 1/wn, to reference_step.csv."""
+    T_r = 1.0 / TUNED.wn
+    t = np.arange(0.0, 15.0 * T_r, DT)
+    out, rows = {}, [["filter", "peak velocity [A wn]", "at [T_r]", "peak acceleration [A wn^2]",
+                      "at [T_r]", "2 % settling [T_r]"]]
+    for label, cfg in (("2nd order", replace(TUNED, order=2)), ("3rd order (used)", TUNED)):
+        ref = ReferenceModel(dt=DT, cfg_xy=cfg, cfg_psi=cfg)
+        ref.reset(np.zeros(6))
+        cmd = np.zeros(6)
+        cmd[0] = 1.0                                       # unit step in North [m]
+        pos, vel, acc = (np.zeros(len(t)) for _ in range(3))
+        for k, tk in enumerate(t):
+            eta, nu, a = ref.step(tk, DT, cmd)
+            pos[k], vel[k], acc[k] = eta[0], nu[0], a[0]
+        out[label] = (t, pos, vel, acc)
+        outside = np.where(np.abs(pos - 1.0) > 0.02)[0]    # last sample outside the 2 % band
+        rows.append([label, round(vel.max() / TUNED.wn, 3), round(t[vel.argmax()] / T_r, 2),
+                     round(acc.max() / TUNED.wn ** 2, 3), round(t[acc.argmax()] / T_r, 2),
+                     round((outside[-1] + 1) * DT / T_r, 2)])
+        print(f"step {label:17s} peak vel {rows[-1][1]} A wn at {rows[-1][2]} T_r, "
+              f"peak acc {rows[-1][3]} A wn^2 at {rows[-1][4]} T_r, settling {rows[-1][5]} T_r")
+    with open(OUT_DIR / "reference_step.csv", "w", newline="") as f:
+        csv.writer(f).writerows(rows)
+    return out
+
+
+def plot_step(resp):
+    """Normalised position, velocity and acceleration of the unit step response."""
+    import matplotlib.pyplot as plt
+    T_r, wn = 1.0 / TUNED.wn, TUNED.wn
+    fig, axes = plt.subplots(3, 1, figsize=(7, 5.5), sharex=True)
+    for label, style in (("2nd order", "--"), ("3rd order (used)", "-")):
+        t, pos, vel, acc = resp[label]
+        axes[0].plot(t / T_r, pos, style, label=label)
+        axes[1].plot(t / T_r, vel / wn, style, label=label)
+        axes[2].plot(t / T_r, acc / wn ** 2, style, label=label)
+    axes[0].axhspan(0.98, 1.02, color="0.85", lw=0, label="2 % band")
+    axes[0].set_ylabel(r"$\eta_d / A$")
+    axes[1].set_ylabel(r"$\dot\eta_d / (A\omega_r)$")
+    axes[2].set_ylabel(r"$\ddot\eta_d / (A\omega_r^2)$")
+    axes[2].set_xlabel(r"Time $t / T_r$")
+    axes[2].set_xlim(0, 12)
+    axes[0].legend(fontsize=8, loc="lower right")
+    for ax in axes:
+        ax.grid(True, alpha=0.3)
+    fig.suptitle(r"Step response of size $A$ from rest, $\zeta_r = 1$")
+    fig.tight_layout()
+    return fig
+
+
 # -- PART 2: CLOSED LOOP, SIMULATION 2 -- #
 
 def closed_loop_sim2(thrusters):
@@ -190,6 +247,39 @@ def closed_loop_sim2(thrusters):
     print("\nPart 2, Simulation 2 (closed loop)")
     for k, v in m.items():
         print(f"  {k:62s} {v if isinstance(v, list) else round(v, 3)}")
+    return logs
+
+
+def plot_sim2_leg(logs, t0=HOLD - 10.0, t1=2 * HOLD):
+    """Simulation 2, first sway leg: command, reference and vessel East position,
+    tracking error with the reference speed, and desired vs applied sway force."""
+    import matplotlib.pyplot as plt
+    sel = (logs.t >= t0) & (logs.t <= t1)
+    t = logs.t[sel]
+    e_pos = np.hypot(logs.eta[sel, 0] - logs.sp[sel, 0], logs.eta[sel, 1] - logs.sp[sel, 1])
+    # Reference speed: logged nu_ref holds BODY u, v of the reference
+    speed = np.hypot(logs.nu_ref[sel, 0], logs.nu_ref[sel, 1])
+    fig, axes = plt.subplots(3, 1, figsize=(7, 6), sharex=True)
+    axes[0].plot(t, logs.cmd[sel, 1], "k:", label="command")
+    axes[0].plot(t, logs.sp[sel, 1], "--", label="reference")
+    axes[0].plot(t, logs.eta[sel, 1], label="vessel")
+    axes[0].set_ylabel("East [m]")
+    axes[0].legend(fontsize=8, loc="upper right")
+    axes[1].plot(t, e_pos, color="C3", label="position tracking error")
+    axes[1].set_ylabel("Tracking error [m]", color="C3")
+    ax_v = axes[1].twinx()
+    ax_v.plot(t, speed, color="C0", lw=0.9, label="reference speed")
+    ax_v.set_ylabel("Reference speed [m/s]", color="C0")
+    axes[2].plot(t, logs.tau_d[sel, 1] / 1e3, label="desired")
+    axes[2].plot(t, logs.tau_thr[sel, 1] / 1e3, "--", label="applied by thrusters")
+    axes[2].set_ylabel("Sway force [kN]")
+    axes[2].set_xlabel("Time [s]")
+    axes[2].legend(fontsize=8, loc="upper right")
+    for ax in axes:
+        ax.grid(True, alpha=0.3)
+    fig.suptitle("Simulation 2, first sway leg: reference model in closed loop")
+    fig.tight_layout()
+    return fig
 
 
 def plot_feedforward(results, tunnel):
@@ -239,13 +329,15 @@ def main(argv=None):
           f"azimuths {th[1].u_max/1e3:.0f} kN, {th[1].u_rate/1e3:.0f} kN/s each")
 
     results = reference_alone(thrusters)
-    closed_loop_sim2(thrusters)
+    resp = step_response()
+    logs = closed_loop_sim2(thrusters)
 
-    fig = plot_feedforward(results, thrusters[0])
-    fig.savefig(OUT_DIR / "fig_reference_feedforward.pdf")
-    fig.savefig(OUT_DIR / "fig_reference_feedforward.png", dpi=200)
-    print(f"\nsaved fig_reference_feedforward, reference_verification.csv and "
-          f"reference_sim2_metrics.csv to {OUT_DIR}")
+    for name, fig in (("fig_reference_feedforward", plot_feedforward(results, thrusters[0])),
+                      ("fig_reference_step", plot_step(resp)),
+                      ("fig_reference_sim2_leg", plot_sim2_leg(logs))):
+        fig.savefig(OUT_DIR / f"{name}.pdf")
+        fig.savefig(OUT_DIR / f"{name}.png", dpi=200)
+    print(f"\nsaved the reference figures and CSV files to {OUT_DIR}")
     if not args.no_show:
         plt.show()
 
