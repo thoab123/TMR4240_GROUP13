@@ -1,0 +1,3 @@
+filter,peak velocity [A wn],at [T_r],peak acceleration [A wn^2],at [T_r],2 % settling [T_r]
+2nd order,0.369,0.99,1.0,0.0,5.82
+3rd order (used),0.271,1.99,0.232,0.58,7.5
