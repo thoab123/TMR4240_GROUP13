@@ -1,0 +1,15 @@
+quantity,value
+max tracking error position [m],1.062
+time of max tracking error [s],344.0
+RMS tracking error position [m],0.265
+max tracking error heading [deg],0.325
+"settling per leg, 0.5 m / 2 deg [s]","[167.5, 162.4, 128.6, 165.3, 162.0]"
+peak thrust / max per thruster [-],"[0.468, 0.11, 0.11]"
+time with a thrust command at max [%],0.0
+time at thrust ramp-rate limit [%],0.0
+time at azimuth rate limit [%],2.96
+latest azimuth rate limit after a setpoint change [s],111.7
+"max wrench residual X, Y [kN], N [kNm]","[3.53, 5.6, 77.36]"
+"RMS wrench residual X, Y [kN], N [kNm]","[0.165, 0.301, 4.56]"
+time with residual > 1 kN or 10 kNm [s],15.0
+latest residual > 1 kN / 10 kNm after a setpoint change [s],6.6
