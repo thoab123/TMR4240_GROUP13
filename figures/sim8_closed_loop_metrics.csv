@@ -1,0 +1,5 @@
+case,max position error [m],RMS position error [m],max LF position error [m],max heading error [deg],RMS heading error [deg],max LF heading error [deg],mean thrust utilisation [%],time with a thrust command at max [%],time at ramp-rate limit [%],mean thrust rate Tunnel_Bow [kN/s],mean thrust rate Azimuth_1 [kN/s],mean thrust rate Azimuth_2 [kN/s],mean azimuth rate Azimuth_1 [deg/s],mean azimuth rate Azimuth_2 [deg/s]
+raw feedback noise off,3.3003,1.208,1.8212,4.3205,1.5546,1.3812,12.7413,46.5511,99.6668,3.9777,8.7181,8.8541,11.3915,11.1216
+raw feedback noise on,3.6239,1.3657,2.142,4.9129,1.8149,1.8248,14.2545,46.4512,99.9667,3.9878,9.6022,9.6996,11.6594,11.2704
+EKF noise off,1.3497,0.5442,0.7876,3.5132,1.1935,0.5395,4.7196,0.0,0.0,0.8296,0.2874,0.1237,3.7436,7.1561
+EKF noise on,1.3427,0.547,0.7952,3.5399,1.1925,0.5381,4.7244,0.0,0.1666,1.0002,0.5084,0.4362,8.4087,9.1902
