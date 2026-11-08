@@ -113,7 +113,7 @@ class ThrustAllocator:
     
     def _feasible_scale_unconstrained(self, tau):
         
-        ## -- SECTION 3b: ANALYTIC LOWER BOUND FOR THE SCALING FACTOR (speed-up) -- ##
+        ## -- SECTION 3b: ANALYTIC LOWER BOUND FOR THE SCALING FACTOR -- ##
         
         # The unconstrained WLS solution is linear in tau, so the largest factor s <= 1
         # for which s * z_0 respects every thrust limit follows directly:
@@ -169,13 +169,13 @@ class ThrustAllocator:
             {
                 "type": "ineq",
                 "fun": lambda v: 80.0**2 - v[1]**2 - v[2]**2,
-                # Analytic Jacobian (speed-up: avoids numerical differencing at every iteration)
+                # Analytic Jacobian (avoids numerical differencing at every iteration)
                 "jac": lambda v: np.array([0.0, -2.0 * v[1], -2.0 * v[2], 0.0, 0.0])
             },
             {
                 "type": "ineq",
                 "fun": lambda v: 80.0**2 - v[3]**2 - v[4]**2,
-                # Analytic Jacobian (speed-up)
+                # Analytic Jacobian
                 "jac": lambda v: np.array([0.0, 0.0, 0.0, -2.0 * v[3], -2.0 * v[4]])
             }
         ]
@@ -188,8 +188,10 @@ class ThrustAllocator:
             constraints = constraints,
             method = "SLSQP",    # Sequential Least Squares Programming.
             options = {
-                "ftol": 1e-6,
-                "maxiter": 30
+                "ftol": 1e-6,     # 1e-6 kN is far below what the thrusters can resolve
+                "maxiter": 30     # ample for feasible demands, which converge in a few
+                                  # iterations; infeasible demands stop early and are
+                                  # handled by the scaling below
             })
         
         # Convertion from [kN] to [N]:
@@ -242,8 +244,8 @@ class ThrustAllocator:
         if z is None:
             
             # Scale the requested wrench correctly (using a scaling factor).
-            # Speed-up: start from the analytic lower bound instead of 0, so every factor
-            # below it needs no optimisation, and use 7 steps (precision < 1 %) instead of 28:
+            # The search starts from the analytic lower bound, so factors below it need
+            # no optimisation; 7 bisection steps give a precision better than 1 %:
             low, z_0 = self._feasible_scale_unconstrained(tau)
             high = 1.0
             z = low * z_0

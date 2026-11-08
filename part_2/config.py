@@ -32,7 +32,7 @@ class RefAxisConfig:
     defaults here (overriding them only in ``run_case_part_2.py`` will not
     reach the checks).
     """
-    # Tuned values (Group 13) carried over from part_1/config.py, justified in
+    # Tuned values carried over from part_1/config.py, justified in
     # the report (Reference Model section) and reproducible with
     # reference_tuning_study.py. Part 1 simulation numbers below refer to the
     # Part 1 four-corner tests.
