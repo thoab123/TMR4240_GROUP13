@@ -35,7 +35,7 @@ from part_2.current import Current
 from part_2.observer import select_observer
 from simulation.plotter_part_2 import (plot_nis, plot_observer, plot_observer_error,
                                        plot_thruster_setpoints, plot_waves,
-                                       plot_wind_field, plot_wrench_residual)
+                                       plot_wind_field, plot_wrench_residual, plot_wave_rejection)
 from part_2.reference import ReferenceModel
 from part_2.thrust_allocation import ThrustAllocator
 from models.waves import Waves
@@ -123,6 +123,61 @@ def four_corner_commands(cfg: Part2SimConfig, hold: float):
     for i, c in enumerate(corners):
         rows = slice(i * per_leg, n_steps if i == len(corners) - 1 else (i + 1) * per_leg)
         eta_cmd[rows, 0], eta_cmd[rows, 1], eta_cmd[rows, 5] = c
+    return eta_cmd
+
+
+def transit_commands(cfg: Part2SimConfig, hold: float, transit_time: float):
+    """Set-point sequence for a transit mission: hold, move north, hold, move east, hold.
+    
+    Args:
+        cfg: simulation config
+        hold: seconds to hold at each waypoint
+        transit_time: seconds for each transit leg
+    """
+    # Waypoint sequence: (x [m], y [m], heading [rad])
+    waypoints = [
+        (0.0, 0.0, 0.0),        # Start: origin, north heading
+        (0.0, 0.0, 0.0),        # Hold at origin
+        (0.0, 500.0, 0.0),      # After transit: 500m north, north heading
+        (0.0, 500.0, 0.0),      # Hold
+        (500.0, 500.0, np.pi/4), # After transit: 500m east, NE heading
+        (500.0, 500.0, np.pi/4), # Hold
+    ]
+    
+    n_steps = int(round(cfg.T / cfg.dt)) + 1
+    hold_steps = int(round(hold / cfg.dt))
+    transit_steps = int(round(transit_time / cfg.dt))
+    
+    eta_cmd = np.zeros((n_steps, 6))
+    
+    # Leg sequence: [start at 0, hold, transit to wp1, hold, transit to wp2, hold]
+    legs = [
+        (0, hold_steps, waypoints[0]),  # Hold at origin
+        (hold_steps, hold_steps + transit_steps, waypoints[1]),  # Ramp to wp1
+        (hold_steps + transit_steps, 2*hold_steps + transit_steps, waypoints[2]),  # Hold at wp1
+        (2*hold_steps + transit_steps, 2*hold_steps + 2*transit_steps, waypoints[3]),  # Ramp to wp2
+        (2*hold_steps + 2*transit_steps, 3*hold_steps + 2*transit_steps, waypoints[4]),  # Hold at wp2
+    ]
+    
+    for start, end, (x_dest, y_dest, psi) in legs:
+        end = min(end, n_steps)
+        if start >= end:
+            break
+        
+        # Linear interpolation for transit legs; hold for waypoint legs
+        if end - start == hold_steps:
+            # Waypoint hold: constant position and heading
+            eta_cmd[start:end, 0] = x_dest
+            eta_cmd[start:end, 1] = y_dest
+            eta_cmd[start:end, 5] = psi
+        else:
+            # Transit: ramp position linearly (heading constant during transit)
+            x_prev, y_prev, _ = waypoints[0] if start == 0 else waypoints[2]
+            frac = np.linspace(0, 1, end - start + 1)[:-1]
+            eta_cmd[start:end, 0] = x_prev + frac * (x_dest - x_prev)
+            eta_cmd[start:end, 1] = y_prev + frac * (y_dest - y_prev)
+            eta_cmd[start:end, 5] = psi
+    
     return eta_cmd
 
 
@@ -244,8 +299,12 @@ def sim4():
                                  observer_type=kind) # , bypass_actuators=True)
             logs = run(cfg, np.zeros(6), environment(**env_kw), controller=fixed)
             plot_observer(logs).suptitle(f"Observer {kind}, {label}")
-            # Keep NIS plot only for Kalman with waves (diagnostic)
-            if kind == "kalman" and env_kw.get("waves", False):
+            plot_observer_error(logs).suptitle(f"Observer {kind}, {label} — estimation error")
+            # Add wave-rejection plot for "with waves" scenarios to show filtering capability
+            if env_kw.get("waves", False):
+                plot_wave_rejection(logs).suptitle(f"Observer {kind}, {label} — wave rejection")
+            # NIS plot for observer diagnostics (all scenarios)
+            if kind == "kalman":
                 plot_nis(logs).suptitle(f"Observer {kind}, {label} — NIS diagnostic")
             out[(kind, label)] = logs
     # Convergence: start the estimate away from the truth (the engine resets it
@@ -259,6 +318,9 @@ def sim4():
         current, wind, waves = environment()
         logs = sim.run(np.zeros(6), current=current, wind=wind, waves=waves)
         plot_observer(logs).suptitle(f"Observer {kind}, offset start — convergence")
+        plot_observer_error(logs).suptitle(f"Observer {kind}, offset start — error convergence")
+        if kind == "kalman":
+            plot_nis(logs).suptitle(f"Observer {kind}, offset start — NIS diagnostic")
         out[(kind, "offset start")] = logs
     # Stage (c) is the only part that needs the choice you make from the
     # evidence above, so it is skipped until you have made it.  Stages (a) and
@@ -278,6 +340,8 @@ def sim4():
         logs = run(cfg, np.zeros(6), environment())
         standard_plots(logs, setpoints=True, observer=use_obs)
         plt.gcf().suptitle(f"Closed loop — {label}")
+        if use_obs:
+            plot_observer_error(logs).suptitle(f"Closed loop — {label} (estimation error)")
         out[("closed loop", label)] = logs
     return out
 
@@ -321,12 +385,42 @@ def sim6():
 
 
 def sim7():
-    """Part 2, Simulation 7 — your own showcase.  Design it, explain it, discuss it."""
-    # TODO (students): replace this with your own scenario.
-    cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=True, observer_type=selected_observer())
-    logs = run(cfg, np.zeros(6), environment())
-    standard_plots(logs, observer=True)
+    """Part 2, Simulation 7 — full system integration: four-corner DP test with 
+    complete observer, reference model, and environmental loads.
+    
+    This simulation demonstrates the complete DP system in action, contrasting
+    with Simulation 3 (raw measurements, no observer) to showcase the value of
+    the EKF observer in rejecting wave-frequency disturbances and maintaining
+    accurate position tracking in realistic marine conditions.
+    """
+    hold = 300.0
+    cfg = Part2SimConfig(dt=DT, T=5 * hold, use_observer=True, 
+                         observer_type=selected_observer(), thruster_dynamics=True)
+    logs = run(cfg, four_corner_commands(cfg, hold), environment())
+    standard_plots(logs, setpoints=True, environment_plots=True, observer=True)
     return logs
+
+
+def sim7b():
+    """Part 2, Simulation 7b — extended capability: transit mission with dynamic 
+    waypoint navigation in full sea state.
+    
+    This test demonstrates the system's ability to execute a realistic transit mission
+    (hold at origin, navigate north 500m, hold, navigate northeast 500m, hold) while
+    maintaining course over ground and managing environmental disturbances. This 
+    extends the static 4-corner test to show dynamic DP capability under realistic 
+    mission constraints.
+    """
+    hold = 300.0
+    transit_time = 200.0
+    total_time = 3 * hold + 2 * transit_time  # ~1700s
+    cfg = Part2SimConfig(dt=DT, T=total_time, use_observer=True, 
+                         observer_type=selected_observer(), thruster_dynamics=True)
+    logs = run(cfg, transit_commands(cfg, hold, transit_time), environment())
+    standard_plots(logs, setpoints=True, environment_plots=True, observer=True)
+    return logs
+
+
 
 
 def bonus_sensor_noise():
@@ -357,7 +451,7 @@ def bonus_sensor_noise():
 
 
 SCENARIOS = {"sim1": sim1, "sim2": sim2, "sim3": sim3, "sim4": sim4,
-             "sim5": sim5, "sim6": sim6, "sim7": sim7, "bonus": bonus_sensor_noise}
+             "sim5": sim5, "sim6": sim6, "sim7": sim7, "sim7b": sim7b, "bonus": bonus_sensor_noise}
 
 
 def main(argv=None):

@@ -215,3 +215,66 @@ def plot_wrench_residual(logs, figsize=(11, 6)):
     fig.suptitle(r"Actuator wrench residual $r_\tau=\tau_d-\tau_{thr}$")
     fig.tight_layout()
     return fig
+
+
+def plot_wave_rejection(logs, figsize=(12, 8)):
+    """Show wave-frequency vs low-frequency separation in position error.
+    
+    Demonstrates the observer's wave-filtering capability by decomposing the
+    position error into low-frequency (tracking) and high-frequency (wave)
+    components, and showing the power spectral density reduction at the wave
+    frequency band.
+    """
+    from scipy import signal
+    
+    dt = float(logs.t[1] - logs.t[0])
+    
+    # Compute position errors
+    pos_n = logs.eta[:, 0] - logs.sp[:, 0]  # North error
+    pos_e = logs.eta[:, 1] - logs.sp[:, 1]  # East error
+    
+    # Design filters: cutoff at 0.05 Hz (wave/sway boundary)
+    sos_hp = signal.butter(4, 0.05, btype='high', fs=1/dt, output='sos')
+    sos_lp = signal.butter(4, 0.05, btype='low', fs=1/dt, output='sos')
+    
+    # Split North error into components
+    waves_n = signal.sosfilt(sos_hp, pos_n)
+    tracking_n = signal.sosfilt(sos_lp, pos_n)
+    
+    # Compute frequency domain
+    f, Pxx_total = signal.welch(pos_n, 1/dt, nperseg=min(2048, len(pos_n)//4))
+    f, Pxx_tracking = signal.welch(tracking_n, 1/dt, nperseg=min(2048, len(pos_n)//4))
+    f, Pxx_waves = signal.welch(waves_n, 1/dt, nperseg=min(2048, len(pos_n)//4))
+    
+    fig, axes = plt.subplots(2, 1, figsize=figsize, sharex='col')
+    
+    # Time domain: show decomposition
+    axes[0].plot(logs.t, pos_n, 'k-', label='Total position error', linewidth=1.5, alpha=0.8)
+    axes[0].plot(logs.t, tracking_n, 'b-', label='Low-freq (tracking error)', linewidth=1.5)
+    axes[0].plot(logs.t, waves_n, 'r-', label='High-freq (wave disturbance)', 
+                 linewidth=1.0, alpha=0.6)
+    axes[0].set_ylabel('North Position Error [m]')
+    axes[0].legend(loc='upper right')
+    axes[0].grid(True, alpha=0.3)
+    
+    # Frequency domain: show attenuation
+    axes[1].semilogy(f, Pxx_total, 'k-', label='Total', linewidth=1.5, alpha=0.8)
+    axes[1].semilogy(f, Pxx_tracking, 'b-', label='After LF filtering', linewidth=1.5)
+    axes[1].semilogy(f, Pxx_waves, 'r-', label='Wave component (high-freq)', 
+                     linewidth=1.0, alpha=0.6)
+    
+    # Mark dominant wave frequency (if available in logs)
+    # Wave period Tp ≈ 8s → frequency ≈ 0.125 Hz
+    wave_freq_nominal = 0.125
+    axes[1].axvline(wave_freq_nominal, color='r', linestyle='--', linewidth=1, alpha=0.5,
+                    label=f'Nominal wave freq (~{wave_freq_nominal} Hz)')
+    
+    axes[1].set_xlabel('Frequency [Hz]')
+    axes[1].set_ylabel('Power Spectral Density [m²/Hz]')
+    axes[1].set_xlim([0, 0.5])
+    axes[1].legend(loc='upper right')
+    axes[1].grid(True, alpha=0.3, which='both')
+    
+    fig.suptitle(f'Wave-Frequency Rejection — Observer: {logs.observer_name}')
+    fig.tight_layout()
+    return fig
