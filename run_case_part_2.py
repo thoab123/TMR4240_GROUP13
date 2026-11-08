@@ -300,11 +300,12 @@ def sim4():
                                  observer_type=kind)
             logs = run(cfg, np.zeros(6), environment(**env_kw), controller=fixed)
             plot_observer(logs).suptitle(f"Observer {kind}, {label}")
+            plot_observer_error(logs).suptitle(f"Observer {kind}, {label} — estimation error")
             # Add wave-rejection plot for "with waves" scenarios to show filtering capability
             if env_kw.get("waves", False):
                 plot_wave_rejection(logs).suptitle(f"Observer {kind}, {label} — wave rejection")
-            # Keep NIS plot only for Kalman with waves (diagnostic)
-            if kind == "kalman" and env_kw.get("waves", False):
+            # NIS plot for observer diagnostics (all scenarios)
+            if kind == "kalman":
                 plot_nis(logs).suptitle(f"Observer {kind}, {label} — NIS diagnostic")
             out[(kind, label)] = logs
     # Convergence: start the estimate away from the truth (the engine resets it
@@ -318,6 +319,9 @@ def sim4():
         current, wind, waves = environment()
         logs = sim.run(np.zeros(6), current=current, wind=wind, waves=waves)
         plot_observer(logs).suptitle(f"Observer {kind}, offset start — convergence")
+        plot_observer_error(logs).suptitle(f"Observer {kind}, offset start — error convergence")
+        if kind == "kalman":
+            plot_nis(logs).suptitle(f"Observer {kind}, offset start — NIS diagnostic")
         out[(kind, "offset start")] = logs
     # Stage (c) is the only part that needs the choice you make from the
     # evidence above, so it is skipped until you have made it.  Stages (a) and
@@ -337,6 +341,8 @@ def sim4():
         logs = run(cfg, np.zeros(6), environment())
         standard_plots(logs, setpoints=True, observer=use_obs)
         plt.gcf().suptitle(f"Closed loop — {label}")
+        if use_obs:
+            plot_observer_error(logs).suptitle(f"Closed loop — {label} (estimation error)")
         out[("closed loop", label)] = logs
     return out
 
