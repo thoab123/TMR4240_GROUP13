@@ -68,9 +68,7 @@ SEED = 123
 
 # Observer used by Part 2, Simulations 5-7 (and by the raw-vs-observer
 # comparison in Part 2, Simulation 4); options "nonlinear_passive" or "kalman".
-# The EKF ("kalman") is used: it adapts its gains through the covariance and
-# stays stable in the heavy-sea test (Simulation 6), where the nonlinear
-# passive observer with fixed gains ends in a limit cycle.
+# The EKF ("kalman") was selected from the Simulation 4 comparison (see the report).
 SELECTED_OBSERVER = "kalman"
 
 # Initial observer error used by the convergence demonstration in Part 2,

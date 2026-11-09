@@ -69,22 +69,26 @@ class NonlinearPassiveObserver(Observer):
 
     def __init__(
         self,
+        # Mass and linear damping per DOF: surge, sway and yaw are the diagonal of
+        # M = M_RB + M_A and D in the assignment, Appendix B (Observer Design Data).
+        # The observer is decoupled per DOF, so the sway-yaw coupling of M is neglected.
+        # Heave, roll and pitch are not used by the 3-DOF model.
         m: tuple[float, ...] = (
-            5.0e5,  # surge [kg]
-            7.5e5,  # sway  [kg]
-            1.0e6,  # heave [kg]
-            1.0e7,  # roll  [kg*m^2]
-            1.0e8,  # pitch [kg*m^2]
-            6.0e7,  # yaw   [kg*m^2]
+            6.007e5,  # surge [kg]
+            7.067e5,  # sway  [kg]
+            1.0e6,    # heave [kg] (not used)
+            1.0e7,    # roll  [kg*m^2] (not used)
+            1.0e8,    # pitch [kg*m^2] (not used)
+            5.456e7,  # yaw   [kg*m^2]
         ),
 
         d: tuple[float, ...] = (
-            5.0e4,  # surge [N*s/m]
-            1.0e5,  # sway  [N*s/m]
-            2.0e5,  # heave [N*s/m]
-            5.0e6,  # roll  [N*m*s/rad]
-            1.0e7,  # pitch [N*m*s/rad]
-            1.0e7,  # yaw   [N*m*s/rad]
+            1.118e3,  # surge [N*s/m]
+            2.229e4,  # sway  [N*s/m]
+            2.0e5,    # heave [N*s/m] (not used)
+            5.0e6,    # roll  [N*m*s/rad] (not used)
+            1.0e7,    # pitch [N*m*s/rad] (not used)
+            1.950e6,  # yaw   [N*m*s/rad]
         ),
         
         w0: float = 0.8,    # Peak wave frequency [rad/s] (typically 0.6 - 1.0 rad/s in JONSWAP)
