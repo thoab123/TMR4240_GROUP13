@@ -22,6 +22,7 @@ report.  Part 2, Simulations 5-7 and the raw-vs-observer comparison of
 Part 2, Simulation 4 use it explicitly, and stop with a message until you
 have set it.
 """
+
 from __future__ import annotations
 
 import sys
