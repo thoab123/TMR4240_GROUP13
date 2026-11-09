@@ -22,6 +22,7 @@ report.  Part 2, Simulations 5-7 and the raw-vs-observer comparison of
 Part 2, Simulation 4 use it explicitly, and stop with a message until you
 have set it.
 """
+
 from __future__ import annotations
 
 import sys
@@ -59,7 +60,7 @@ DT = 0.1
 CURRENT_SPEED, CURRENT_FROM = 0.2, np.deg2rad(90.0)       # 0.2 m/s from east
 WIND_SPEED, WIND_FROM = 10.0, np.deg2rad(0.0)             # 10 m/s from north
 WAVES_HS, WAVES_TP, WAVES_FROM = 1.5, 8.0, np.deg2rad(45.0)   # design sea, from north-east
-WAVES_N = 100                                             # wave frequency components (range 0.25-3 wp, default), see plot_wave_model.py
+WAVES_N = 10                                              # wave frequency components; lower for faster simulations
 ROBUST_HS, ROBUST_TP = 2.5, 10.0                          # Simulation 6 (heavy sea for a vessel of this size, Lpp 34 m)
 CAP_WIND, CAP_CURRENT, CAP_HS, CAP_TP = 12.0, 0.2, 1.5, 8.0   # Simulation 5
 CAP_POS_LIMIT, CAP_PSI_LIMIT_DEG = 5.0, 5.0               # DP watch circles (max LF excursion)
@@ -71,7 +72,7 @@ SEED = 123
 # The EKF ("kalman") is used: it adapts its gains through the covariance and
 # stays stable in the heavy-sea test (Simulation 6), where the nonlinear
 # passive observer with fixed gains ends in a limit cycle.
-SELECTED_OBSERVER = "kalman"
+SELECTED_OBSERVER = "nonlinear_passive"
 
 # Initial observer error used by the convergence demonstration in Part 2,
 # Simulation 4.  The engine resets every observer at the TRUE initial pose, so
@@ -296,7 +297,7 @@ def sim4():
     for kind in ("nonlinear_passive", "kalman"):
         for label, env_kw in variants:
             cfg = Part2SimConfig(dt=DT, T=600.0, use_reference=False, use_observer=True,
-                                 observer_type=kind)
+                                 observer_type=kind) # , bypass_actuators=True)
             logs = run(cfg, np.zeros(6), environment(**env_kw), controller=fixed)
             plot_observer(logs).suptitle(f"Observer {kind}, {label}")
             plot_observer_error(logs).suptitle(f"Observer {kind}, {label} — estimation error")
@@ -311,7 +312,7 @@ def sim4():
     # ON the truth), then watch the error decay.  Quote the convergence time.
     for kind in ("nonlinear_passive", "kalman"):
         cfg = Part2SimConfig(dt=DT, T=300.0, use_reference=False, use_observer=True,
-                             observer_type=kind)
+                             observer_type=kind) # , bypass_actuators=True)
         sim = make_sim(cfg, fixed)
         sim.reset_state()
         sim.observer.reset(OBSERVER_OFFSET)
