@@ -82,9 +82,9 @@ class NonlinearPassiveObserver(Observer):
         # Assign parameters BEFORE they are used below
         self.k1_upper = -2.0 * (1.0 - self.zeta) * (self.wc / self.w0)
         self.k1_lower = 2.0 * self.w0 * (1.0 - self.zeta)
-        self.k2 = 0.2       # old: self.wc
+        self.k2 = self.wc
 
-        self.K4 = np.diag([5e4, 5e4, 1e6])
+        self.K4 = np.diag([5e4, 5e4, 5e6])
         self.K3 = 0.01 * self.K4
         self.gamma = 1
 
