@@ -1,0 +1,20 @@
+quantity,value
+final North [m],-188.1955
+final East [m],-55.1441
+final drift distance [m],196.1082
+"drift direction, towards [deg from North]",196.3314
+final heading [deg],-21.9065
+"slow drift velocity North, last 100 s [m/s]",-0.8708
+"slow drift velocity East, last 100 s [m/s]",-0.1303
+wave-frequency motion std N [m],0.2089
+wave-frequency motion std E [m],0.3246
+wave-frequency motion std heading [deg],1.1158
+gust speed std [m/s],0.8856
+max |direction deviation| [deg],4.2209
+mean wind load X [kN],-2.565
+mean wave load X [kN],-3.4664
+mean wave load Y [kN],1.0643
+wave load std Y [kN],161.5087
+max |wave load Y| [kN],533.737
+peak wavelength / Lpp [-],2.9389
+Hs / Lpp [%],4.4118
