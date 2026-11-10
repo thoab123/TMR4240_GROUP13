@@ -254,7 +254,7 @@ Part 2 keeps the same vessel, the same three thrusters and the same five blocks,
 `run_case_part_2.py` has one preset per simulation of the Part 2 assignment:
 
 ```bash
-python run_case_part_2.py --list    # sim1 … sim7, bonus
+python run_case_part_2.py --list    # sim1 … sim7, sim9, bonus
 python run_case_part_2.py sim2      # Part 2, Simulation 2
 ```
 
@@ -267,11 +267,12 @@ python run_case_part_2.py sim2      # Part 2, Simulation 2
 | `sim5` | Part 2, Simulation 5 | Average thrust-utilisation polar plot over the environmental direction. `simulation/capability.py` runs the sweep and calls your `part_2/utilization.py` for the metric. Three polar plots: all directions; the DP watch-circle view, masking a direction whose maximum **low-frequency** excursion (30 s moving average, second half of the run) exceeds 5 m / 5°; and the operability view, masking a direction whose maximum **total** motion, wave-frequency oscillation included, exceeds 3 m / 3°. Both deviations are printed per direction |
 | `sim6` | Part 2, Simulation 6 | Observer robustness in a heavy sea, 1000 s |
 | `sim7` | Part 2, Simulation 7 | Your own demonstration — design it, explain it, discuss it |
+| `sim9` | Additional comparison | Repeat Sim 3's four-corner DP test with the selected observer enabled |
 | `bonus` | Extra credit (3 points) | The Part 2, Simulation 4 comparison and the raw-vs-observer closed loop repeated with measurement noise on. All regular simulations run with noise off |
 
 **The two choices the runner leaves to you**, both at the top of `run_case_part_2.py`:
 
-- `SELECTED_OBSERVER` starts as `None`. Compare both observers in Part 2, Simulation 4, then set it to the one you chose and justify the choice in the report. Part 2, Simulations 5–7 and the raw-vs-observer comparison use it explicitly, and stop with a message until you have set it.
+- `SELECTED_OBSERVER` starts as `None`. Compare both observers in Part 2, Simulation 4, then set it to the one you chose and justify the choice in the report. Part 2, Simulations 5–7 and 9 and the raw-vs-observer comparison use it explicitly, and stop with a message until you have set it.
 - `OBSERVER_OFFSET` is the initial observer error used by the convergence demonstration. The engine resets every observer at the true pose, so this is what gives the estimate something to converge from. The shipped value is an example: choose your own and say why it is a fair test.
 
 The environmental numbers are constants at the top of the same file. `notebooks/part_2_demo.ipynb` runs every preset with the report plots and all Part 2 checks.

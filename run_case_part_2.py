@@ -26,6 +26,7 @@ have set it.
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -60,7 +61,7 @@ DT = 0.1
 CURRENT_SPEED, CURRENT_FROM = 0.2, np.deg2rad(90.0)       # 0.2 m/s from east
 WIND_SPEED, WIND_FROM = 10.0, np.deg2rad(0.0)             # 10 m/s from north
 WAVES_HS, WAVES_TP, WAVES_FROM = 1.5, 8.0, np.deg2rad(45.0)   # design sea, from north-east
-WAVES_N = 10                                              # wave frequency components; lower for faster simulations
+WAVES_N = 100                                             # wave frequency components (range 0.25-3 wp, default), see plot_wave_model.py
 ROBUST_HS, ROBUST_TP = 2.5, 10.0                          # Simulation 6 (heavy sea for a vessel of this size, Lpp 34 m)
 CAP_WIND, CAP_CURRENT, CAP_HS, CAP_TP = 12.0, 0.2, 1.5, 8.0   # Simulation 5
 CAP_POS_LIMIT, CAP_PSI_LIMIT_DEG = 5.0, 5.0               # DP watch circles (max LF excursion)
@@ -72,7 +73,7 @@ SEED = 123
 # The EKF ("kalman") is used: it adapts its gains through the covariance and
 # stays stable in the heavy-sea test (Simulation 6), where the nonlinear
 # passive observer with fixed gains ends in a limit cycle.
-SELECTED_OBSERVER = "nonlinear_passive"
+SELECTED_OBSERVER = "kalman"
 
 # Initial observer error used by the convergence demonstration in Part 2,
 # Simulation 4.  The engine resets every observer at the TRUE initial pose, so
@@ -124,61 +125,6 @@ def four_corner_commands(cfg: Part2SimConfig, hold: float):
     for i, c in enumerate(corners):
         rows = slice(i * per_leg, n_steps if i == len(corners) - 1 else (i + 1) * per_leg)
         eta_cmd[rows, 0], eta_cmd[rows, 1], eta_cmd[rows, 5] = c
-    return eta_cmd
-
-
-def transit_commands(cfg: Part2SimConfig, hold: float, transit_time: float):
-    """Set-point sequence for a transit mission: hold, move north, hold, move east, hold.
-    
-    Args:
-        cfg: simulation config
-        hold: seconds to hold at each waypoint
-        transit_time: seconds for each transit leg
-    """
-    # Waypoint sequence: (x [m], y [m], heading [rad])
-    waypoints = [
-        (0.0, 0.0, 0.0),        # Start: origin, north heading
-        (0.0, 0.0, 0.0),        # Hold at origin
-        (0.0, 500.0, 0.0),      # After transit: 500m north, north heading
-        (0.0, 500.0, 0.0),      # Hold
-        (500.0, 500.0, np.pi/4), # After transit: 500m east, NE heading
-        (500.0, 500.0, np.pi/4), # Hold
-    ]
-    
-    n_steps = int(round(cfg.T / cfg.dt)) + 1
-    hold_steps = int(round(hold / cfg.dt))
-    transit_steps = int(round(transit_time / cfg.dt))
-    
-    eta_cmd = np.zeros((n_steps, 6))
-    
-    # Leg sequence: [start at 0, hold, transit to wp1, hold, transit to wp2, hold]
-    legs = [
-        (0, hold_steps, waypoints[0]),  # Hold at origin
-        (hold_steps, hold_steps + transit_steps, waypoints[1]),  # Ramp to wp1
-        (hold_steps + transit_steps, 2*hold_steps + transit_steps, waypoints[2]),  # Hold at wp1
-        (2*hold_steps + transit_steps, 2*hold_steps + 2*transit_steps, waypoints[3]),  # Ramp to wp2
-        (2*hold_steps + 2*transit_steps, 3*hold_steps + 2*transit_steps, waypoints[4]),  # Hold at wp2
-    ]
-    
-    for start, end, (x_dest, y_dest, psi) in legs:
-        end = min(end, n_steps)
-        if start >= end:
-            break
-        
-        # Linear interpolation for transit legs; hold for waypoint legs
-        if end - start == hold_steps:
-            # Waypoint hold: constant position and heading
-            eta_cmd[start:end, 0] = x_dest
-            eta_cmd[start:end, 1] = y_dest
-            eta_cmd[start:end, 5] = psi
-        else:
-            # Transit: ramp position linearly (heading constant during transit)
-            x_prev, y_prev, _ = waypoints[0] if start == 0 else waypoints[2]
-            frac = np.linspace(0, 1, end - start + 1)[:-1]
-            eta_cmd[start:end, 0] = x_prev + frac * (x_dest - x_prev)
-            eta_cmd[start:end, 1] = y_prev + frac * (y_dest - y_prev)
-            eta_cmd[start:end, 5] = psi
-    
     return eta_cmd
 
 
@@ -377,51 +323,132 @@ def sim5(step_deg: float = 10.0):
 
 
 def sim6():
-    """Part 2, Simulation 6 — observer robustness: heavy sea, station keeping 1000 s,
-    SELECTED_OBSERVER in the loop."""
+    """Part 2, Simulation 6 — heavy-sea station keeping for 1000 s; plots first 600 s and full run."""
     cfg = Part2SimConfig(dt=DT, T=1000.0, use_observer=True, observer_type=selected_observer())
     logs = run(cfg, np.zeros(6), environment(hs=ROBUST_HS, tp=ROBUST_TP))
+    plot_count = int(round(600.0 / cfg.dt)) + 1
+    plot_logs = replace(logs, **{
+        name: value[:plot_count]
+        for name, value in vars(logs).items()
+        if isinstance(value, np.ndarray) and value.ndim > 0
+    })
+    standard_plots(plot_logs, observer=True)
+    thruster_figure = plot_thruster_setpoints(plot_logs)
+    thruster_figure.suptitle("First 600 s — Thruster set-points vs. actual")
+    thruster_figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
+    figures_before_full_run = set(plt.get_fignums())
     standard_plots(logs, observer=True)
+    plot_thruster_setpoints(logs)
+    for figure_number in set(plt.get_fignums()) - figures_before_full_run:
+        figure = plt.figure(figure_number)
+        suptitle = getattr(figure, "_suptitle", None)
+        existing_title = suptitle.get_text() if suptitle is not None else ""
+        title = f"Full 1000 s run — {existing_title}" if existing_title else "Full 1000 s run"
+        figure.suptitle(title)
+        figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
     return logs
 
 
 def sim7():
-    """Part 2, Simulation 7 — full system integration: four-corner DP test with 
-    complete observer, reference model, and environmental loads.
-    
-    This simulation demonstrates the complete DP system in action, contrasting
-    with Simulation 3 (raw measurements, no observer) to showcase the value of
-    the EKF observer in rejecting wave-frequency disturbances and maintaining
-    accurate position tracking in realistic marine conditions.
-    """
-    hold = 300.0
-    cfg = Part2SimConfig(dt=DT, T=5 * hold, use_observer=True, 
+    """Part 2, Simulation 7 — hold the origin through a 45-degree heading maneuver."""
+    cfg = Part2SimConfig(dt=DT, T=600.0, use_observer=True,
                          observer_type=selected_observer(), thruster_dynamics=True)
+    n_steps = int(round(cfg.T / cfg.dt)) + 1
+    eta_cmd = np.zeros((n_steps, 6))
+    turn_start = int(round(120.0 / cfg.dt))
+    turn_back = int(round(360.0 / cfg.dt))
+    eta_cmd[turn_start:turn_back, 5] = np.deg2rad(45.0)
+    logs = run(cfg, eta_cmd, environment())
+    baseline_logs = run(cfg, np.zeros_like(eta_cmd), environment())
+    standard_plots(logs, setpoints=True, observer=True)
+
+    def position_deviation(logs):
+        total = np.hypot(logs.eta[:, 0], logs.eta[:, 1])
+        north = np.convolve(
+            np.pad(logs.eta[:, 0], pad, mode="edge"), window_weights, mode="valid"
+        )
+        east = np.convolve(
+            np.pad(logs.eta[:, 1], pad, mode="edge"), window_weights, mode="valid"
+        )
+        low_frequency = np.hypot(north, east)
+        return total, low_frequency
+
+    def heading_error_degrees(logs):
+        error = np.arctan2(
+            np.sin(logs.eta[:, 5] - logs.sp[:, 5]),
+            np.cos(logs.eta[:, 5] - logs.sp[:, 5]),
+        )
+        return np.rad2deg(error)
+
+    heading_error = heading_error_degrees(logs)
+    baseline_heading_error = heading_error_degrees(baseline_logs)
+    window_samples = int(round(30.0 / cfg.dt))
+    if window_samples % 2 == 0:
+        window_samples += 1
+    window_weights = np.full(window_samples, 1.0 / window_samples)
+    pad = window_samples // 2
+    position_error, position_error_lf = position_deviation(logs)
+    baseline_position_error, baseline_position_error_lf = position_deviation(baseline_logs)
+
+    figure, axis = plt.subplots(figsize=(11, 4))
+    axis.plot(logs.t, position_error, color="tab:blue", alpha=0.25,
+              label="45 deg turn: total deviation")
+    axis.plot(logs.t, position_error_lf, color="tab:blue",
+              label="45 deg turn: 30 s low-frequency deviation")
+    axis.plot(baseline_logs.t, baseline_position_error, color="tab:orange", alpha=0.25,
+              label="No-turn baseline: total deviation")
+    axis.plot(baseline_logs.t, baseline_position_error_lf, "--", color="tab:orange",
+              label="No-turn baseline: 30 s low-frequency deviation")
+    axis.axvspan(120.0, 270.0, color="tab:orange", alpha=0.15, label="0 to 45 deg turn")
+    axis.axvspan(360.0, 480.0, color="tab:green", alpha=0.12, label="45 to 0 deg turn")
+    axis.set_xlabel("Time [s]")
+    axis.set_ylabel("Position deviation from origin [m]")
+    axis.set_title("Simulation 7 — heading maneuver vs. no-turn baseline")
+    axis.grid(True, alpha=0.3)
+    axis.legend(loc="best")
+    figure.tight_layout()
+
+    print("Simulation 7: 45-degree heading maneuver vs. no-turn baseline")
+    print(f"  max position excursion: {np.max(position_error):.2f} m")
+    print(f"  RMS position excursion: {np.sqrt(np.mean(position_error**2)):.2f} m")
+    print(
+        "  max heading error to filtered reference (turn / baseline): "
+        f"{np.max(np.abs(heading_error)):.2f} / "
+        f"{np.max(np.abs(baseline_heading_error)):.2f} deg"
+    )
+    print("  paired interval comparison (turn case vs. no-turn baseline):")
+    intervals = (
+        ("initial hold", 30.0, 105.0),
+        ("0 to 45 deg turn", 135.0, 255.0),
+        ("45 deg hold", 285.0, 345.0),
+        ("45 to 0 deg turn", 375.0, 465.0),
+        ("final hold", 495.0, 585.0),
+    )
+    for label, start, end in intervals:
+        interval = (logs.t >= start) & (logs.t < end)
+        turn_rms = np.sqrt(np.mean(position_error_lf[interval]**2))
+        baseline_rms = np.sqrt(np.mean(baseline_position_error_lf[interval]**2))
+        turn_peak = np.max(position_error[interval])
+        baseline_peak = np.max(baseline_position_error[interval])
+        turn_heading_rms = np.sqrt(np.mean(heading_error[interval]**2))
+        baseline_heading_rms = np.sqrt(np.mean(baseline_heading_error[interval]**2))
+        print(
+            f"    {label}: LF RMS {turn_rms:.2f} / {baseline_rms:.2f} m "
+            f"(delta {turn_rms - baseline_rms:+.2f}); total peak "
+            f"{turn_peak:.2f} / {baseline_peak:.2f} m; heading RMS "
+            f"{turn_heading_rms:.2f} / {baseline_heading_rms:.2f} deg"
+        )
+    return logs
+
+
+def sim9():
+    """Part 2, Simulation 9 — Sim 3's four-corner test with the selected observer."""
+    hold = 300.0
+    cfg = Part2SimConfig(dt=DT, T=5 * hold, use_observer=True,
+                         observer_type=selected_observer())
     logs = run(cfg, four_corner_commands(cfg, hold), environment())
     standard_plots(logs, setpoints=True, environment_plots=True, observer=True)
     return logs
-
-
-def sim7b():
-    """Part 2, Simulation 7b — extended capability: transit mission with dynamic 
-    waypoint navigation in full sea state.
-    
-    This test demonstrates the system's ability to execute a realistic transit mission
-    (hold at origin, navigate north 500m, hold, navigate northeast 500m, hold) while
-    maintaining course over ground and managing environmental disturbances. This 
-    extends the static 4-corner test to show dynamic DP capability under realistic 
-    mission constraints.
-    """
-    hold = 300.0
-    transit_time = 200.0
-    total_time = 3 * hold + 2 * transit_time  # ~1700s
-    cfg = Part2SimConfig(dt=DT, T=total_time, use_observer=True, 
-                         observer_type=selected_observer(), thruster_dynamics=True)
-    logs = run(cfg, transit_commands(cfg, hold, transit_time), environment())
-    standard_plots(logs, setpoints=True, environment_plots=True, observer=True)
-    return logs
-
-
 
 
 def bonus_sensor_noise():
@@ -452,7 +479,8 @@ def bonus_sensor_noise():
 
 
 SCENARIOS = {"sim1": sim1, "sim2": sim2, "sim3": sim3, "sim4": sim4,
-             "sim5": sim5, "sim6": sim6, "sim7": sim7, "sim7b": sim7b, "bonus": bonus_sensor_noise}
+             "sim5": sim5, "sim6": sim6, "sim7": sim7, "sim9": sim9,
+             "bonus": bonus_sensor_noise}
 
 
 def main(argv=None):
