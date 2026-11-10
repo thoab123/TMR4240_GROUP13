@@ -322,6 +322,63 @@ def sim5(step_deg: float = 10.0):
     return result
 
 
+def station_keeping_metrics(logs, thrusters, start=300.0, end=600.0):
+    """Station-keeping, LF estimation and actuator metrics on a bounded interval."""
+    from simulation.plotter_part_2 import _moving_average
+
+    dt = float(logs.t[1] - logs.t[0])
+    selected = (logs.t >= start) & (logs.t <= end)
+    rate_window = (logs.t[:-1] >= start) & (logs.t[1:] <= end)
+    wrap = lambda angle: np.arctan2(np.sin(angle), np.cos(angle))
+    rms = lambda values: float(np.sqrt(np.mean(np.square(values))))
+    position = np.linalg.norm(logs.eta[:, :2] - logs.sp[:, :2], axis=1)
+    heading = np.rad2deg(wrap(logs.eta[:, 5] - logs.sp[:, 5]))
+    truth = logs.eta[:, [0, 1, 5]].copy()
+    truth[:, 2] = np.unwrap(truth[:, 2])
+    truth_lf = np.column_stack([
+        _moving_average(truth[:, index], dt) for index in range(3)
+    ])
+    estimation_error = logs.eta_est[:, [0, 1, 5]] - truth_lf
+    estimation_error[:, 2] = wrap(estimation_error[:, 2])
+    velocity_lf = np.column_stack([
+        _moving_average(logs.nu[:, index], dt) for index in (0, 1, 5)
+    ])
+    velocity_error = logs.nu_est[:, [0, 1, 5]] - velocity_lf
+    thrust_limits = np.array([thruster.u_max for thruster in thrusters])
+    ramp_limits = np.array([thruster.u_rate for thruster in thrusters])
+    azimuth_indices = [index for index, thruster in enumerate(thrusters)
+                       if thruster.kind == "azimuth"]
+    slew_limits = np.array([thrusters[index].rot_speed for index in azimuth_indices])
+    thrust_rates = np.abs(np.diff(logs.u, axis=0))[rate_window] / dt
+    azimuth_rates = np.abs(wrap(np.diff(logs.alpha, axis=0)))[rate_window] / dt
+    ramp_active = np.any(thrust_rates >= 0.99 * ramp_limits, axis=1)
+    slew_active = np.any(azimuth_rates[:, azimuth_indices] >= 0.99 * slew_limits, axis=1)
+    residual = (logs.tau_d - logs.tau_thr)[selected][:, [0, 1, 5]]
+    metrics = {
+        "Position RMS [m]": rms(position[selected]),
+        "Maximum horizontal deviation [m]": float(position[selected].max()),
+        "Heading RMS [deg]": rms(heading[selected]),
+        "Maximum absolute heading error [deg]": float(np.abs(heading[selected]).max()),
+        "LF position estimation RMS [m]": rms(np.linalg.norm(estimation_error[selected, :2], axis=1)),
+        "LF heading estimation RMS [deg]": rms(np.rad2deg(estimation_error[selected, 2])),
+        "LF surge/sway estimation RMS [m/s]": rms(np.linalg.norm(velocity_error[selected, :2], axis=1)),
+        "Mean thrust utilisation [%]": float(np.mean(100 * np.sum(np.abs(logs.u[selected]), axis=1) / thrust_limits.sum())),
+        "Mean absolute thrust rate [kN/s]": float(thrust_rates.mean() / 1000),
+        "Time at thrust-amplitude limit [%]": float(100 * np.mean(np.any(np.abs(logs.u[selected]) >= 0.99 * thrust_limits, axis=1))),
+        "Time at thrust-ramp limit [%]": float(100 * ramp_active.mean()),
+        "Time at azimuth-slew limit [%]": float(100 * slew_active.mean()),
+        "Time at either rate limit [%]": float(100 * np.mean(ramp_active | slew_active)),
+        "Peak absolute East deviation [m]": float(np.abs(logs.eta[selected, 1]).max()),
+        "Time of peak absolute East deviation [s]": float(logs.t[selected][np.argmax(np.abs(logs.eta[selected, 1]))]),
+        "Peak surge wrench residual [kN]": float(np.abs(residual[:, 0]).max() / 1000),
+        "RMS surge wrench residual [kN]": rms(residual[:, 0]) / 1000,
+    }
+    for index, thruster in enumerate(thrusters):
+        metrics[f"Peak actual thrust {thruster.name} [kN]"] = float(np.abs(logs.u[selected, index]).max() / 1000)
+        metrics[f"Mean absolute thrust rate {thruster.name} [kN/s]"] = float(thrust_rates[:, index].mean() / 1000)
+    return metrics
+
+
 def sim6():
     """Part 2, Simulation 6 — heavy-sea station keeping for 1000 s; plots first 600 s and full run."""
     cfg = Part2SimConfig(dt=DT, T=1000.0, use_observer=True, observer_type=selected_observer())
@@ -332,20 +389,44 @@ def sim6():
         for name, value in vars(logs).items()
         if isinstance(value, np.ndarray) and value.ndim > 0
     })
+    figures_before_comparison = set(plt.get_fignums())
     standard_plots(plot_logs, observer=True)
+    plot_wrench_residual(plot_logs)
     thruster_figure = plot_thruster_setpoints(plot_logs)
     thruster_figure.suptitle("First 600 s — Thruster set-points vs. actual")
     thruster_figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
     figures_before_full_run = set(plt.get_fignums())
     standard_plots(logs, observer=True)
+    plot_wrench_residual(logs)
     plot_thruster_setpoints(logs)
-    for figure_number in set(plt.get_fignums()) - figures_before_full_run:
+    for figure_number in sorted(set(plt.get_fignums()) - figures_before_comparison):
         figure = plt.figure(figure_number)
+        full_run = figure_number not in figures_before_full_run
+        displayed_logs = logs if full_run else plot_logs
+        for axis in figure.axes:
+            if any(np.array_equal(line.get_xdata(), displayed_logs.t) for line in axis.lines):
+                axis.axvline(300.0, color="0.35", linestyle="--", linewidth=0.8)
+                axis.axvline(600.0, color="0.35", linestyle="--", linewidth=0.8)
         suptitle = getattr(figure, "_suptitle", None)
         existing_title = suptitle.get_text() if suptitle is not None else ""
-        title = f"Full 1000 s run — {existing_title}" if existing_title else "Full 1000 s run"
-        figure.suptitle(title)
-        figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.96))
+        period = "Full 1000 s run" if full_run else "First 600 s"
+        figure.suptitle(f"Sim 6: {period} | Evaluation: 300-600 s\n{existing_title}")
+        figure.tight_layout(rect=(0.0, 0.0, 1.0, 0.93))
+    print("Simulation 6: 1000 s run; comparison figures show 0-600 s.")
+    print("Matched evaluation window: 300-600 s; full-run figures are shown separately.")
+    print("Running the matched 600 s Sim 4 design-sea baseline for the metrics table...")
+    baseline_logs = run(replace(cfg, T=600.0), np.zeros(6), environment())
+    thrusters = default_thrusters_part_2()
+    baseline_metrics = station_keeping_metrics(baseline_logs, thrusters)
+    heavy_metrics = station_keeping_metrics(logs, thrusters)
+    print(f"Observer: {selected_observer()}; dt={cfg.dt} s; seed={SEED}; wave components={WAVES_N}")
+    print(f"Design sea: Hs={WAVES_HS} m, Tp={WAVES_TP} s; heavy sea: Hs={ROBUST_HS} m, Tp={ROBUST_TP} s")
+    print("Metrics: 300 <= t <= 600 s; LF truth: centred 30 s mean of each complete run.")
+    print("Limit activity: at least one thruster reaches 99% of its configured limit.")
+    print("Mean thrust rate: mean absolute rate across time and all three thrusters.")
+    print(f"{'Metric':<58} {'Sim 4':>12} {'Sim 6':>12}")
+    for name, value in heavy_metrics.items():
+        print(f"{name:<58} {baseline_metrics[name]:12.3f} {value:12.3f}")
     return logs
 
 

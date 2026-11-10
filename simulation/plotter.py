@@ -189,10 +189,21 @@ def plot_dashboard(logs, figsize=(13, 8)):
     ax.set_title("Controller wrench"); ax.legend(loc="best", fontsize=8)
 
     ax = axes[1, 2]
-    ax.plot(t, logs.nu[:, 0], label="u [m/s]")
-    ax.plot(t, logs.nu[:, 1], label="v [m/s]")
-    ax.plot(t, np.degrees(logs.nu[:, 5]), label="r [deg/s]")
-    ax.set_title("BODY velocities"); ax.legend(loc="best", fontsize=8)
+    velocity_grid = ax.get_subplotspec().subgridspec(2, 1, hspace=0.15)
+    ax.remove()
+    velocity_axis = fig.add_subplot(velocity_grid[0])
+    yaw_axis = fig.add_subplot(velocity_grid[1], sharex=velocity_axis)
+    velocity_axis.plot(t, logs.nu[:, 0], label="u")
+    velocity_axis.plot(t, logs.nu[:, 1], label="v")
+    velocity_axis.set_ylabel("u, v [m/s]")
+    velocity_axis.set_title("BODY velocities")
+    velocity_axis.legend(loc="best", fontsize=8)
+    velocity_axis.tick_params(labelbottom=False)
+    yaw_axis.plot(t, np.degrees(logs.nu[:, 5]), color="tab:green", label="r")
+    yaw_axis.set_ylabel("r [deg/s]")
+    yaw_axis.set_xlabel("Time [s]")
+    for velocity_plot in (velocity_axis, yaw_axis):
+        velocity_plot.grid(True, alpha=0.3)
 
     for ax in axes.flat:
         ax.grid(True, alpha=0.3)
