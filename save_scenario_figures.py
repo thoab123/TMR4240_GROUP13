@@ -1,5 +1,6 @@
 """Run a Part 2 scenario from run_case_part_2.py and save all its figures.
 
+    python save_scenario_figures.py              # every scenario (takes several minutes)
     python save_scenario_figures.py sim1
     python save_scenario_figures.py sim1 sim3
 
@@ -35,11 +36,16 @@ def figure_name(fig, k):
 
 
 def main(argv=None):
-    names = (sys.argv[1:] if argv is None else argv) or ["sim1"]
+    args = sys.argv[1:] if argv is None else argv
+    # No names (or "all"): save every scenario in run_case_part_2.py
+    names = list(SCENARIOS) if not args or args == ["all"] else args
+    unknown = [n for n in names if n not in SCENARIOS]
+    if unknown:
+        raise SystemExit(f"unknown scenario(s) {', '.join(unknown)}; "
+                         f"options: {', '.join(SCENARIOS)} or all")
     OUT_DIR.mkdir(exist_ok=True)
     for name in names:
-        if name not in SCENARIOS:
-            raise SystemExit(f"unknown scenario {name!r}; options: {', '.join(SCENARIOS)}")
+        print(f"\n=== {name}: running ...")
         plt.close("all")
         try:
             SCENARIOS[name]()
@@ -52,6 +58,7 @@ def main(argv=None):
             fig.savefig(OUT_DIR / f"{stem}.pdf")
             fig.savefig(OUT_DIR / f"{stem}.png", dpi=200)
             print(f"saved figures/{stem}.pdf/.png")
+        plt.close("all")
 
 
 if __name__ == "__main__":
