@@ -1,5 +1,5 @@
 case,LF position error RMS [m],LF heading error RMS [deg],wave motion left N [%],wave motion left E [%],wave motion left heading [%],"estimate noise N, E [mm]",estimate noise heading [mdeg],"u, v error RMS [m/s]",r error RMS [deg/s],"estimate noise u, v [mm/s]",estimate noise r [mdeg/s],position lag [s],heading lag [s],mean NIS [-]
-NPO noise off,0.2419,0.4879,24.46,36.1399,27.8635,0.0249,0.8006,0.0514,0.1236,0.0131,0.4054,-0.1,0.0,nan
-NPO noise on,0.2563,0.4888,24.9962,38.5049,27.83,33.7197,22.8899,0.0595,0.1244,19.1305,11.7359,-0.1,-0.1,nan
+NPO noise off,0.3634,0.6255,3.991,4.0647,5.4783,0.0084,0.1608,0.0406,0.0925,0.0025,0.0757,0.2,0.3,nan
+NPO noise on,0.3792,0.6286,4.1315,4.3684,5.4993,6.2007,4.1852,0.0441,0.0932,2.4287,2.2253,0.2,0.3,nan
 EKF noise off,0.352,0.5039,5.2754,6.8139,11.8312,0.0101,0.2634,0.0475,0.0771,0.0006,0.0342,0.3,-0.1,4.117
 EKF noise on,0.3525,0.507,5.3688,7.0485,11.8066,5.1244,7.502,0.0475,0.0777,0.3804,0.9751,0.3,-0.1,6.902
