@@ -1,0 +1,5 @@
+observer,case,position RMS [m],heading RMS [deg],surge/sway velocity RMS [m/s]
+nonlinear_passive,with waves (vs LF truth),0.2541,0.4831,0.0663
+nonlinear_passive,without waves (vs truth),0.1782,0.1187,0.0625
+kalman,with waves (vs LF truth),0.3520,0.5039,0.0475
+kalman,without waves (vs truth),0.2117,0.1314,0.0284
