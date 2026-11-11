@@ -277,6 +277,40 @@ python run_case_part_2.py sim2      # Part 2, Simulation 2
 
 The environmental numbers are constants at the top of the same file. `notebooks/part_2_demo.ipynb` runs every preset with the report plots and all Part 2 checks.
 
+### Reproducing Observer Report Metrics
+
+Run these commands from the project root with the project Python environment active:
+
+```bash
+python tune_ekf_qc.py wave
+python tune_ekf_qc.py bias
+python -c "import run_case_part_2 as rc; rc.SELECTED_OBSERVER='kalman'; rc.sim6()"
+```
+
+The final command temporarily selects the EKF without changing the saved observer
+selection. It runs closed-loop station keeping for 600 s in the design sea and
+1000 s in the heavy sea, and prints both columns over 300-600 s using seed 123,
+100 wave components, and a 0.1 s step. `python run_case_part_2.py sim6` instead
+uses the saved `SELECTED_OBSERVER`; do not label NPO results as EKF results.
+
+The closed-loop table distinguishes true LF position-deviation RMS relative to
+the setpoint from LF estimation-error RMS. LF truth is a centred, edge-padded
+30 s moving average computed on each complete run before selecting the interval.
+The horizontal WF estimate/true power ratio is `10*log10(P_est/P_true)`, where
+each power sums the North and East powers in the fixed 0.392699-1.570796 rad/s
+band. On the selected interval, subtract a 30 s moving average, use Welch spectra
+with 1024-sample segments, and integrate band power by the trapezoidal rule.
+More negative values mean stronger suppression of wave-band motion in the estimate.
+
+The tuning experiments are separate fixed-wrench runs: [2000 N, 2000 N, 2000 Nm],
+current 0.3 m/s, wind 12 m/s, waves Hs=2 m and Tp=8 s, all from south, seed 42,
+100 wave components, and evaluation over the full 0-600 s. Their displayed
+`Error_spectrum_ratio_dB` is the horizontal estimation-error-norm PSD ratio near
+0.125 Hz versus 0.02 Hz (nearest Welch bins), not estimate/true wave attenuation.
+The historical internal key `wave_atten_db` is retained for compatibility.
+The Sim 8 `wave motion left [%]` values are per-component band-standard-deviation
+ratios (amplitude ratios); convert them to dB with `20*log10(percent/100)`.
+
 ---
 
 ## Carrying your Part 1 work into Part 2

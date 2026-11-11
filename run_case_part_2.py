@@ -70,9 +70,6 @@ SEED = 123
 
 # Observer used by Part 2, Simulations 5-7 (and by the raw-vs-observer
 # comparison in Part 2, Simulation 4); options "nonlinear_passive" or "kalman".
-# The EKF ("kalman") is used: it adapts its gains through the covariance and
-# stays stable in the heavy-sea test (Simulation 6), where the nonlinear
-# passive observer with fixed gains ends in a limit cycle.
 SELECTED_OBSERVER = "kalman"
 
 # Initial observer error used by the convergence demonstration in Part 2,
@@ -325,6 +322,8 @@ def sim5(step_deg: float = 10.0):
 def station_keeping_metrics(logs, thrusters, start=300.0, end=600.0):
     """Station-keeping, LF estimation and actuator metrics on a bounded interval."""
     from simulation.plotter_part_2 import _moving_average
+    from scipy.integrate import trapezoid
+    from scipy.signal import welch
 
     dt = float(logs.t[1] - logs.t[0])
     selected = (logs.t >= start) & (logs.t <= end)
@@ -340,6 +339,24 @@ def station_keeping_metrics(logs, thrusters, start=300.0, end=600.0):
     ])
     estimation_error = logs.eta_est[:, [0, 1, 5]] - truth_lf
     estimation_error[:, 2] = wrap(estimation_error[:, 2])
+    lf_position = np.linalg.norm(truth_lf[:, :2] - logs.sp[:, :2], axis=1)
+    wave_band = (0.5 * 2.0 * np.pi / WAVES_TP, 2.0 * 2.0 * np.pi / WAVES_TP)
+
+    def horizontal_wave_power(pose):
+        horizontal = pose[selected, :2]
+        fast = horizontal - np.column_stack([
+            _moving_average(horizontal[:, index], dt) for index in range(2)
+        ])
+        frequency, spectrum = welch(fast, fs=1.0 / dt,
+                                    nperseg=min(1024, len(fast)), axis=0)
+        angular_frequency = 2.0 * np.pi * frequency
+        band = (angular_frequency >= wave_band[0]) & (angular_frequency <= wave_band[1])
+        return float(np.sum(trapezoid(spectrum[band], frequency[band], axis=0)))
+
+    true_wave_power = horizontal_wave_power(logs.eta)
+    estimated_wave_power = horizontal_wave_power(logs.eta_est)
+    wave_ratio_db = (float(10.0 * np.log10(estimated_wave_power / true_wave_power))
+                     if true_wave_power > 0 and estimated_wave_power > 0 else float("nan"))
     velocity_lf = np.column_stack([
         _moving_average(logs.nu[:, index], dt) for index in (0, 1, 5)
     ])
@@ -356,12 +373,14 @@ def station_keeping_metrics(logs, thrusters, start=300.0, end=600.0):
     residual = (logs.tau_d - logs.tau_thr)[selected][:, [0, 1, 5]]
     metrics = {
         "Position RMS [m]": rms(position[selected]),
+        "True LF position deviation RMS [m]": rms(lf_position[selected]),
         "Maximum horizontal deviation [m]": float(position[selected].max()),
         "Heading RMS [deg]": rms(heading[selected]),
         "Maximum absolute heading error [deg]": float(np.abs(heading[selected]).max()),
         "LF position estimation RMS [m]": rms(np.linalg.norm(estimation_error[selected, :2], axis=1)),
         "LF heading estimation RMS [deg]": rms(np.rad2deg(estimation_error[selected, 2])),
         "LF surge/sway estimation RMS [m/s]": rms(np.linalg.norm(velocity_error[selected, :2], axis=1)),
+        "Horizontal WF estimate/true power ratio [dB]": wave_ratio_db,
         "Mean thrust utilisation [%]": float(np.mean(100 * np.sum(np.abs(logs.u[selected]), axis=1) / thrust_limits.sum())),
         "Mean absolute thrust rate [kN/s]": float(thrust_rates.mean() / 1000),
         "Time at thrust-amplitude limit [%]": float(100 * np.mean(np.any(np.abs(logs.u[selected]) >= 0.99 * thrust_limits, axis=1))),
@@ -422,6 +441,10 @@ def sim6():
     print(f"Observer: {selected_observer()}; dt={cfg.dt} s; seed={SEED}; wave components={WAVES_N}")
     print(f"Design sea: Hs={WAVES_HS} m, Tp={WAVES_TP} s; heavy sea: Hs={ROBUST_HS} m, Tp={ROBUST_TP} s")
     print("Metrics: 300 <= t <= 600 s; LF truth: centred 30 s mean of each complete run.")
+    print(f"WF band: {0.5 * 2 * np.pi / WAVES_TP:.6f}-{2 * 2 * np.pi / WAVES_TP:.6f} rad/s, fixed for both seas.")
+    print("WF ratio: 10*log10(sum estimated N/E band power / sum true N/E band power).")
+    print("Spectra: subtract 30 s mean within the selected interval, Welch with 1024-sample segments.")
+    print("True LF position deviation is measured against the setpoint, not the estimate.")
     print("Limit activity: at least one thruster reaches 99% of its configured limit.")
     print("Mean thrust rate: mean absolute rate across time and all three thrusters.")
     print(f"{'Metric':<58} {'Sim 4':>12} {'Sim 6':>12}")

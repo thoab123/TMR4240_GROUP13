@@ -5,7 +5,7 @@ Usage:
 
 This script tests multiple Q_c wave-component intensities and tabulates key performance
 metrics to justify tuning choices. Metrics include RMS position/velocity errors,
-wave-frequency attenuation, and observer convergence rates.
+an error-spectrum ratio, and observer convergence rates.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from part_2.wind import Wind
 from models.waves import Waves
 from simulation.simulation_part_2 import DPSimulatorPart2
 
-# Simulation constants (match run_case_part_2.py)
+# Separate tuning scenario, not the prescribed Simulation 4 environment.
 DT = 0.1
 CURRENT_SPEED, CURRENT_FROM = 0.3, np.deg2rad(180.0)
 WIND_SPEED, WIND_FROM = 12.0, np.deg2rad(180.0)
@@ -78,7 +78,7 @@ def compute_metrics(logs, dominant_freq: float = 0.125) -> dict:
     rms_vel = np.sqrt(np.mean(vel_err ** 2))
     rms_heading = np.sqrt(np.mean(heading_err ** 2))
     
-    # Wave frequency attenuation: PSD ratio at dominant frequency
+    # Error-spectrum ratio, not estimate/true wave attenuation.
     # Compute position error PSD
     freq, pxx = signal.welch(pos_err, fs=1/dt, nperseg=min(2048, len(pos_err)//2))
     
@@ -163,7 +163,7 @@ def run_qc_tuning_study(qc_configs: list[tuple[float, tuple]]) -> pd.DataFrame:
         }
         results.append(result)
         print(f"  RMS pos: {metrics['rms_pos_m']:.3f}m, "
-              f"Wave atten: {metrics['wave_atten_db']:.1f}dB, "
+              f"Error-spectrum ratio: {metrics['wave_atten_db']:.1f}dB, "
               f"Conv: {metrics['conv_time_s']:.1f}s")
     
     return pd.DataFrame(results)
@@ -210,8 +210,11 @@ if __name__ == "__main__":
     print("=" * 80)
     print(f"Q_c Tuning Study: {config_name}")
     print("=" * 80)
-    print(f"\nConfiguration: Fixed wrench [2e3, 2e3, 2e3] kN, 600s with waves")
-    print(f"Wave spectrum: Hs={WAVES_HS}m, Tp={WAVES_TP}s, 180° heading")
+    print("\nConfiguration: Fixed desired wrench [2000 N, 2000 N, 2000 Nm]; run/evaluation 0-600 s")
+    print(f"Current={CURRENT_SPEED} m/s; wind={WIND_SPEED} m/s; waves Hs={WAVES_HS} m, Tp={WAVES_TP} s")
+    print(f"All environmental directions: from south (180 deg); seed={SEED}; wave components={WAVES_N}; dt={DT} s")
+    print("Error-spectrum ratio R_e: 10*log10(S_e(0.125 Hz)/S_e(0.02 Hz)), nearest Welch bins.")
+    print("e is the horizontal estimate-minus-true error norm; this is not wave attenuation.")
     print(f"\nRunning {len(qc_tunings)} configurations...\n")
     
     # Run study
@@ -238,7 +241,8 @@ if __name__ == "__main__":
     display_df = df[summary_cols].rename(columns={
         'rms_pos_m': 'RMSE_pos_m',
         'rms_vel_ms': 'RMSE_vel_ms',
-        'rms_heading_deg': 'RMSE_heading_deg'
+        'rms_heading_deg': 'RMSE_heading_deg',
+        'wave_atten_db': 'Error_spectrum_ratio_dB'
     })
     print("\n" + display_df.to_string(index=False))
     
